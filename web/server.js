@@ -111,14 +111,35 @@ function verifyProxy(query) {
 async function loadProducts(shop, token, limit = 100, productType = "") {
   const safe = productType.replace(/[^a-zA-Z0-9 &-]/g, "");
   const qstr = safe ? `status:active product_type:${safe}` : "status:active";
-  const query = `query($n:Int!){ products(first:$n, query:"${qstr}"){ edges{ node{ id title handle productType vendor tags featuredImage{url} variants(first:1){ edges{ node{ id price availableForSale } } } } } } }`;
+  const query = `query($n:Int!){ products(first:$n, query:"${qstr}"){ edges{ node{ id title handle productType vendor tags options{ name values } featuredImage{url} variants(first:100){ edges{ node{ id title price availableForSale selectedOptions{ name value } } } } } } } }`;
   const j = await gql(shop, token, query, { n: limit });
   const edges = (j.data && j.data.products && j.data.products.edges) || [];
   return edges.map((e, i) => {
-    const n = e.node, v = n.variants && n.variants.edges[0] && n.variants.edges[0].node;
+    const n = e.node;
+    const varEdges = (n.variants && n.variants.edges) || [];
+    const v = varEdges[0] && varEdges[0].node;
+    const rawOpts = n.options || [];
+    const options = rawOpts
+      .filter((o) => !(o.name === "Title" && o.values.length === 1 && o.values[0] === "Default Title"))
+      .map((o) => ({ name: o.name, values: o.values }));
+    const variants = varEdges.map((ve) => {
+      const vn = ve.node;
+      const m = String(vn.id).match(/(\d+)$/);
+      return {
+        id: m ? m[1] : vn.id,
+        title: vn.title,
+        price: parseFloat(vn.price),
+        available: !!vn.availableForSale,
+        options: options.map((o) => {
+          const so = (vn.selectedOptions || []).find((s) => s.name === o.name);
+          return so ? so.value : null;
+        }),
+      };
+    });
     return { id: n.id, handle: n.handle, variantId: v && v.id, available: !!(v && v.availableForSale),
       title: n.title, vendor: n.vendor, tags: n.tags || [], category: (n.productType || "").toLowerCase(),
       price: v ? parseFloat(v.price) : 0, img: (n.featuredImage && n.featuredImage.url) || "",
+      options, variants,
       orders: Math.max(0, limit - i) * 3, views: 0 };
   }).filter((p) => p.variantId && p.available);
 }
@@ -254,6 +275,56 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted
 </style></head><body><div class="wrap">
 <h1>Boko AI Recommendations — Performance</h1>
 <p class="sub">Items and revenue from products added via your recommendation widgets.</p>
+<style>
+  .how-to{border:1px solid #e3e3e3;border-radius:12px;background:#fff;margin:0 0 20px;overflow:hidden}
+  .how-to>summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:15px;color:#1a1a1a}
+  .how-to>summary::-webkit-details-marker{display:none}
+  .how-to>summary .chev{transition:transform .2s ease;font-size:13px;color:#888}
+  .how-to[open]>summary .chev{transform:rotate(180deg)}
+  .how-to__body{padding:4px 18px 18px;border-top:1px solid #f0f0f0;font-size:14px;line-height:1.55;color:#333}
+  .how-to__body h4{margin:16px 0 6px;font-size:14px;color:#1a1a1a}
+  .how-to__body ol{margin:6px 0 6px 18px;padding:0}
+  .how-to__body li{margin:4px 0}
+  .how-to__body code{background:#f4f4f4;border-radius:4px;padding:1px 5px;font-size:13px}
+  .how-to__body .muted{color:#777;font-size:13px}
+</style>
+<details class="how-to">
+  <summary>How to use AI Recommendations <span class="chev">&#9660;</span></summary>
+  <div class="how-to__body">
+    <p>AI Recommendations adds smart, AI-picked &ldquo;You may also like&rdquo; product suggestions to your storefront &mdash; on your <strong>product pages</strong> and inside your <strong>cart drawer</strong>. No code to paste; you add the components from your theme editor.</p>
+
+    <h4>1. Start your subscription</h4>
+    <ol>
+      <li>Open the app from <strong>Apps</strong> in your Shopify admin and approve the permissions.</li>
+      <li>Start the plan (14-day free trial). Recommendations only display while the trial/subscription is active.</li>
+    </ol>
+
+    <h4>2. Add the product-page rail</h4>
+    <ol>
+      <li>Go to <strong>Online Store &rarr; Themes &rarr; Customize</strong>.</li>
+      <li>In the top dropdown choose a <strong>Products</strong> template.</li>
+      <li>Under the product section click <strong>&#65291; Add block</strong> &rarr; choose <strong>AI Recommendations</strong> (under Apps).</li>
+      <li>Drag it where you want it and click <strong>Save</strong>. Shoppers can pick a variant via swatches and add to cart right from the rail.</li>
+    </ol>
+
+    <h4>3. Turn on the cart-drawer carousel</h4>
+    <ol>
+      <li>Still in <strong>Customize</strong>, open <strong>App embeds</strong> (puzzle-piece icon).</li>
+      <li>Switch <strong>AI Cart Recommendations</strong> <strong>On</strong> and click <strong>Save</strong>.</li>
+      <li>It shows a rotating recommendation in the cart drawer, and hides itself when the cart is empty.</li>
+    </ol>
+
+    <h4>4. Custom CSS (optional)</h4>
+    <p>Each component has a <strong>Custom CSS</strong> box in its theme-editor settings &mdash; paste your own CSS to match your brand. Target classes:</p>
+    <p class="muted">Product rail: <code>.boko-reco</code>, <code>.boko-reco__title</code>, <code>.boko-reco__card</code>, <code>.boko-reco__price</code>, <code>.boko-reco__atc</code><br>
+    Cart carousel: <code>.boko-cc</code>, <code>.bcc-h</code>, <code>.bcc-slide</code>, <code>.bcc-img</code>, <code>.bcc-add</code></p>
+
+    <h4>5. How recommendations are chosen</h4>
+    <p>For each product the app scores every other in-stock product by how well it <em>complements</em> the current one &mdash; favouring different-but-related categories, shared tags/title words and a similar price, with a light nudge from how often items are bought and viewed. An AI step then re-orders the shortlist to best &ldquo;complete the look&rdquo;. Only active, in-stock products are ever shown.</p>
+
+    <p class="muted">Need help? Contact Boko at admin@boko.com.au.</p>
+  </div>
+</details>
 <div class="row"><label class="sub" style="margin:0">Period</label>
 <select id="days"><option value="30">Last 30 days</option><option value="90" selected>Last 90 days</option><option value="365">Last 12 months</option></select>
 <span id="meta" class="sub" style="margin:0 0 0 auto"></span></div>

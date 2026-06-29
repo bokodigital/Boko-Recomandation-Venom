@@ -1,0 +1,165 @@
+{% comment %}
+  Boko AI Recommendations — CART app embed block.
+  Merchants enable this from Theme editor → App embeds → "AI Cart Recommendations"
+  and toggle it on. No code editing. It injects a one-at-a-time recommendation
+  carousel into the cart drawer (and cart page), pulling from the app proxy.
+{% endcomment %}
+
+{%- if block.settings.enabled -%}
+{% if block.settings.custom_css != blank %}<style>{{ block.settings.custom_css }}</style>{% endif %}
+<style>
+  .boko-cc{--ink:#2b2b2b;--muted:#8a8a8a;--line:#e6e6e6;font-family:inherit;color:var(--ink);margin:16px 0;border-top:1px solid var(--line);padding-top:14px}
+  .boko-cc .bcc-h{font-size:{{ block.settings.heading_size }}px;letter-spacing:1.5px;text-transform:uppercase;text-align:center;margin:0 0 10px;font-weight:500}
+  .boko-cc .bcc-stage{position:relative;display:flex;align-items:center;gap:8px}
+  .boko-cc .bcc-nav{flex:0 0 36px;width:36px!important;height:36px!important;min-width:36px!important;max-width:36px!important;min-height:36px!important;padding:0!important;margin:0;border:1px solid var(--line);background:#fff;border-radius:50%!important;cursor:pointer;font-size:16px;line-height:1;color:var(--ink);display:flex;align-items:center;justify-content:center;box-sizing:border-box;aspect-ratio:1/1;flex-shrink:0}
+  .boko-cc .bcc-nav:hover{border-color:var(--ink)}
+  .boko-cc .bcc-track{flex:1;overflow:hidden}
+  .boko-cc .bcc-slides{display:flex;transition:transform .3s ease}
+  .boko-cc .bcc-slide{flex:0 0 100%;display:flex;gap:12px;align-items:center;padding:4px}
+  .boko-cc .bcc-img{flex:0 0 76px;width:76px;height:90px;object-fit:cover;background:#f3f1ee;border-radius:6px}
+  .boko-cc .bcc-info{flex:1;min-width:0}
+  .boko-cc .bcc-title{font-size:{{ block.settings.body_size }}px;line-height:1.3;margin:0 0 4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .boko-cc .bcc-price{font-size:{{ block.settings.body_size }}px;font-weight:600;margin-bottom:8px}
+  .boko-cc .bcc-add{border:none;background:#1f1f1f;color:#fff;font:inherit;letter-spacing:1px;text-transform:uppercase;padding:8px 12px;border-radius:6px;cursor:pointer}
+  .boko-cc .bcc-add.added{background:#3f8f5f}
+  .boko-cc .bcc-dots{display:flex;gap:5px;justify-content:center;margin-top:10px}
+  .boko-cc .bcc-dot{width:6px;height:6px;border-radius:50%;background:var(--line);border:none;padding:0;cursor:pointer}
+  .boko-cc .bcc-dot.on{background:var(--ink)}
+  .boko-cc .bcc-empty{color:var(--muted);font-size:12px;text-align:center;padding:10px}
+</style>
+
+<template id="boko-cc-tpl">
+  <div class="boko-cc" data-boko-cc
+       data-proxy="{{ block.settings.proxy_url }}"
+       data-count="{{ block.settings.count }}"
+       data-autoplay="{{ block.settings.autoplay }}">
+    <p class="bcc-h">{{ block.settings.title | escape }}</p>
+    <div class="bcc-stage">
+      <button class="bcc-nav" data-prev aria-label="Previous">&#8249;</button>
+      <div class="bcc-track"><div class="bcc-slides" data-slides><div class="bcc-empty">Loading…</div></div></div>
+      <button class="bcc-nav" data-next aria-label="Next">&#8250;</button>
+    </div>
+    <div class="bcc-dots" data-dots></div>
+  </div>
+</template>
+
+<script>
+(function(){
+  if (window.__bokoCartEmbed) return; window.__bokoCartEmbed = 1;
+  var TPL = document.getElementById("boko-cc-tpl");
+  // Where to drop the widget inside the cart drawer/page, in priority order.
+  var HOSTS = [
+    "cart-drawer .drawer__footer", "cart-drawer .cart-drawer__footer",
+    "#CartDrawer .drawer__footer", ".cart-drawer .drawer__footer",
+    ".drawer__footer", ".cart-drawer__footer",
+    "#cart-notification .cart-notification__links",
+    "cart-items + *", ".cart__footer", "#main-cart-footer .cart__footer"
+  ];
+
+  function money(n){return "$"+Number(n).toFixed(2);}
+  function vnum(g){var m=String(g).match(/(\d+)$/);return m?m[1]:g;}
+  function setCount(n){try{document.querySelectorAll(".cart-link__count,.cart-count-bubble,.cart-count,[data-cart-count],#CartCount,.cart-link__bubble,.cart-count-number,[data-cart-item-count],.cart-counter,.cart__count").forEach(function(e){var t=e.querySelector("span")||e;if(/^\s*\d+\s*$/.test(t.textContent||""))t.textContent=n;});}catch(e){}}
+
+  function wire(root){
+    if(!root||root.dataset.init) return; root.dataset.init="1";
+    var proxy=root.getAttribute("data-proxy");
+    var count=Math.max(1,parseInt(root.getAttribute("data-count")||"6",10));
+    var autoplay=parseInt(root.getAttribute("data-autoplay")||"0",10);
+    var slides=root.querySelector("[data-slides]"), dots=root.querySelector("[data-dots]");
+    var items=[], idx=0, timer=null, cartIds={}, busy=false;
+    function go(i){ if(!items.length)return; idx=(i+items.length)%items.length; slides.style.transform="translateX("+(-idx*100)+"%)"; dots.querySelectorAll(".bcc-dot").forEach(function(d,k){d.classList.toggle("on",k===idx);}); }
+    function stop(){ if(timer){clearInterval(timer);timer=null;} }
+    function start(){ stop(); if(autoplay>0 && items.length>1){ timer=setInterval(function(){go(idx+1);}, autoplay*1000); } }
+    function addToCart(v,btn){
+      fetch("/cart/add.js",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:[{id:vnum(v),quantity:1,properties:{"_boko_reco":"cart_drawer"}}]})})
+        .then(function(r){if(!r.ok)throw 0;return r.json();})
+        .then(function(){ if(btn){btn.textContent="Added";btn.classList.add("added");} document.dispatchEvent(new CustomEvent("boko:cart:added")); refresh(); })
+        .catch(function(){ if(btn)btn.textContent="Try again"; });
+    }
+    function render(){
+      stop();
+      if(!items.length){ slides.innerHTML="<div class='bcc-empty'>No recommendations right now.</div>"; dots.innerHTML=""; return; }
+      slides.innerHTML="";
+      items.forEach(function(p){
+        var s=document.createElement("div"); s.className="bcc-slide";
+        s.innerHTML=(p.img?"<img class='bcc-img' src='"+p.img+"' alt=''>":"<div class='bcc-img'></div>")+
+          "<div class='bcc-info'><div class='bcc-title'>"+p.title+"</div><div class='bcc-price'>"+money(p.price)+"</div><button class='bcc-add'>Add to cart</button></div>";
+        s.querySelector(".bcc-add").addEventListener("click",function(){addToCart(p.variantId,this);});
+        slides.appendChild(s);
+      });
+      dots.innerHTML=items.map(function(_,k){return "<button class='bcc-dot"+(k===0?" on":"")+"' data-d='"+k+"'></button>";}).join("");
+      dots.querySelectorAll(".bcc-dot").forEach(function(d){d.addEventListener("click",function(){go(+d.dataset.d);start();});});
+      idx=0; go(0); start();
+    }
+    function loadRecos(){
+      var url=proxy+"?type=recommended&limit="+(count+5);
+      return fetch(url,{headers:{Accept:"application/json"}}).then(function(r){return r.json();})
+        .then(function(d){ items=(d.items||[]).filter(function(p){return p.variantId && !cartIds[vnum(p.variantId)];}).slice(0,count); render(); })
+        .catch(function(){ slides.innerHTML="<div class='bcc-empty'>Couldn't load.</div>"; });
+    }
+    function refresh(){
+      if(busy)return; busy=true;
+      fetch("/cart.js",{headers:{Accept:"application/json"}}).then(function(r){return r.json();}).then(function(c){
+        cartIds={}; (c.items||[]).forEach(function(it){ cartIds[String(it.variant_id)]=1; });
+        setCount(c.item_count||0);
+        if((c.item_count||0)===0){ root.style.display="none"; busy=false; return; }
+        root.style.display=""; loadRecos().then(function(){busy=false;});
+      }).catch(function(){ root.style.display=""; loadRecos().then(function(){busy=false;}); });
+    }
+    root.querySelector("[data-prev]").addEventListener("click",function(){go(idx-1);start();});
+    root.querySelector("[data-next]").addEventListener("click",function(){go(idx+1);start();});
+    refresh();
+    ["boko:cart:added","cart:updated","cart:refresh","cart:change","ajaxCart:afterCartLoad"].forEach(function(ev){
+      document.addEventListener(ev,function(){ setTimeout(refresh,300); });
+    });
+  }
+
+  function findHost(){
+    for (var i=0;i<HOSTS.length;i++){ var el=document.querySelector(HOSTS[i]); if(el) return el; }
+    return null;
+  }
+  function inject(){
+    var host=findHost(); if(!host) return;
+    if(host.parentNode && host.parentNode.querySelector("[data-boko-cc]")) return; // already there
+    var node=TPL.content.firstElementChild.cloneNode(true);
+    host.parentNode.insertBefore(node, host);
+    wire(node);
+  }
+  // Try now, on load, and whenever the DOM changes (cart drawer opens/re-renders).
+  inject();
+  document.addEventListener("DOMContentLoaded", inject);
+  var mo=new MutationObserver(function(){ inject(); });
+  mo.observe(document.documentElement,{childList:true,subtree:true});
+})();
+</script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "AI Cart Recommendations",
+  "target": "body",
+  "settings": [
+    { "type": "checkbox", "id": "enabled", "label": "Enable cart recommendations", "default": true },
+    { "type": "text", "id": "title", "label": "Heading", "default": "You may also like" },
+    { "type": "range", "id": "count", "label": "Products to cycle through", "min": 2, "max": 12, "step": 1, "default": 6 },
+    { "type": "range", "id": "autoplay", "label": "Auto-advance (seconds, 0 = off)", "min": 0, "max": 10, "step": 1, "default": 0 },
+    { "type": "range", "id": "heading_size", "label": "Heading size (px)", "min": 11, "max": 22, "step": 1, "default": 15 },
+    { "type": "range", "id": "body_size", "label": "Text size (px)", "min": 11, "max": 18, "step": 1, "default": 13 },
+    {
+      "type": "text", "id": "proxy_url", "label": "App proxy path",
+      "default": "/apps/reco/recommend",
+      "info": "Leave as-is unless you changed the App Proxy subpath."
+    },
+    {
+      "type": "header",
+      "content": "Advanced"
+    },
+    {
+      "type": "textarea",
+      "id": "custom_css",
+      "label": "Custom CSS",
+      "info": "Target: .boko-cc, .bcc-h, .bcc-slide, .bcc-img, .bcc-add"
+    }
+  ]
+}
+{% endschema %}
