@@ -111,7 +111,7 @@ function verifyProxy(query) {
 async function loadProducts(shop, token, limit = 100, productType = "") {
   const safe = productType.replace(/[^a-zA-Z0-9 &-]/g, "");
   const qstr = safe ? `status:active product_type:${safe}` : "status:active";
-  const query = `query($n:Int!){ products(first:$n, query:"${qstr}"){ edges{ node{ id title handle productType vendor tags options{ name values } featuredImage{url} variants(first:100){ edges{ node{ id title price availableForSale selectedOptions{ name value } } } } } } } }`;
+  const query = `query($n:Int!){ products(first:$n, query:"${qstr}"){ edges{ node{ id title handle productType vendor tags publishedAt createdAt options{ name values } featuredImage{url} variants(first:100){ edges{ node{ id title price availableForSale selectedOptions{ name value } } } } } } } }`;
   const j = await gql(shop, token, query, { n: limit });
   const edges = (j.data && j.data.products && j.data.products.edges) || [];
   return edges.map((e, i) => {
@@ -139,7 +139,7 @@ async function loadProducts(shop, token, limit = 100, productType = "") {
     return { id: n.id, handle: n.handle, variantId: v && v.id, available: !!(v && v.availableForSale),
       title: n.title, vendor: n.vendor, tags: n.tags || [], category: (n.productType || "").toLowerCase(),
       price: v ? parseFloat(v.price) : 0, img: (n.featuredImage && n.featuredImage.url) || "",
-      options, variants,
+      options, variants, createdAt: n.publishedAt || n.createdAt || null,
       orders: Math.max(0, limit - i) * 3, views: 0 };
   }).filter((p) => p.variantId && p.available);
 }

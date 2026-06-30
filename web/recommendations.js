@@ -31,7 +31,8 @@ const HEURISTIC = {
           score += pTags.filter((t) => aTags.includes(t)).length * 8;
           if (aPrice > 0 && p.price > 0) score += Math.max(0, 6 - (Math.abs(p.price - aPrice) / aPrice) * 6);
         }
-        score += (p.orders || 0) * 0.01 + (p.views || 0) * 0.005;
+        if (p.createdAt) { var ageDays = (Date.now() - new Date(p.createdAt).getTime()) / 86400000; score += 45 * Math.exp(-ageDays / 90); }
+        score += Math.min((p.orders || 0) * 0.01, 8) + Math.min((p.views || 0) * 0.005, 4);
         return { p, score };
       })
       .sort((a, b) => b.score - a.score)
@@ -64,14 +65,17 @@ function buildPrompt(type, candidates, anchor) {
     "complete an outfit or look. Strongly prefer products from DIFFERENT categories than the anchor " +
     "(e.g. a jacket should be paired with bottoms, footwear, accessories, or base layers — not more jackets). " +
     "Never recommend near-duplicates of the anchor or the same item in another colour. " +
+    "Prefer NEW ARRIVAL items; avoid recommending very old products unless highly relevant. " +
     "Respond ONLY with JSON: {\"ids\":[<id>,<id>,...]}.";
+  const now = Date.now();
   const user = {
     anchor: anchor
       ? { id: anchor.id, title: anchor.title, price: anchor.price, category: anchor.category, tags: anchor.tags || [] }
       : null,
-    candidates: candidates.map((p) => ({
-      id: p.id, title: p.title, price: p.price, category: p.category, tags: p.tags || [], orders: p.orders, views: p.views,
-    })),
+    candidates: candidates.map((p) => {
+      const isNew = p.createdAt && (now - new Date(p.createdAt).getTime()) / 86400000 < 60;
+      return { id: p.id, title: (isNew ? "[NEW] " : "") + p.title, price: p.price, category: p.category, tags: p.tags || [], orders: p.orders, views: p.views };
+    }),
     guidance:
       "All candidates are in stock. Build a complementary set around the anchor — favour variety across " +
       "categories and collections. Do not just return more items from the anchor's own category. " +
