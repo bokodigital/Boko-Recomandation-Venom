@@ -3,6 +3,7 @@ api_version = "2024-10"
 [[extensions]]
 name = "Boko AI Recommendations"
 handle = "reco-widget"
+uid = "e12a63d3-4617-07f7-e8ec-27d428aa53f5035e03e7"
 type = "theme"
 
 # This is a Theme App Extension. After `shopify app deploy`, merchants add the

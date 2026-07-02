@@ -1,0 +1,1 @@
+const S=process.env.SHOP,T=process.env.SHOPIFY_ADMIN_TOKEN;const A=`https://${S.replace(/^https?:\/\//,"")}/admin/api/2025-01/graphql.json`;const r=await fetch(A,{method:"POST",headers:{"Content-Type":"application/json","X-Shopify-Access-Token":T},body:JSON.stringify({query:"{ currentAppInstallation { app { title } } accessScopes { handle } }"})});console.log(await r.text());

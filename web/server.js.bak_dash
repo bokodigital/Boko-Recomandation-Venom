@@ -218,18 +218,18 @@ async function tokenExchange(shop, idToken) {
 
 async function loadStats(shop, token, days) {
   const since = new Date(Date.now() - (days || 90) * 864e5).toISOString().slice(0, 10);
-  const query = `query($n:Int!,$q:String){ orders(first:$n, reverse:true, query:$q){ edges{ node{ lineItems(first:50){ edges{ node{ title quantity discountedTotalSet{ shopMoney{ amount currencyCode } } originalTotalSet{ shopMoney{ amount currencyCode } } discountAllocations{ allocatedAmountSet{ shopMoney{ amount } } } customAttributes{ key value } } } } } } } }`;
+  const query = `query($n:Int!,$q:String){ orders(first:$n, reverse:true, query:$q){ edges{ node{ lineItems(first:50){ edges{ node{ title quantity discountedTotalSet{ shopMoney{ amount currencyCode } } customAttributes{ key value } } } } } } } }`;
   const j = await gql(shop, token, query, { n: 100, q: "created_at:>=" + since });
   if (j.errors) return { error: JSON.stringify(j.errors), pdp: { total: 0, revenue: 0, items: [] }, cart_drawer: { total: 0, revenue: 0, items: [] } };
   const orders = (j.data && j.data.orders && j.data.orders.edges) || [];
-  const src = { pdp: { items: {}, rev: 0 }, cart_drawer: { items: {}, rev: 0 }, sfy_page: { items: {}, rev: 0 }, sfy_menu: { items: {}, rev: 0 } };
+  const src = { pdp: { items: {}, rev: 0 }, cart_drawer: { items: {}, rev: 0 } };
   let currency = "";
   orders.forEach((o) => (o.node.lineItems.edges || []).forEach((le) => {
     const li = le.node; let tag = null;
-    let reco=null,source=null;(li.customAttributes || []).forEach((a) => { if (a.key === "_boko_reco") reco = a.value; if (a.key === "_boko_source") source = a.value; });if(reco==="pdp")tag="pdp";else if(reco==="cart_drawer")tag="cart_drawer";else if(source==="selected-for-you-page")tag="sfy_page";else if(source==="selected-for-you-menu")tag="sfy_menu";
+    (li.customAttributes || []).forEach((a) => { if (a.key === "_boko_reco") tag = a.value; });
     if (tag && src[tag]) {
-      const orig = li.originalTotalSet && li.originalTotalSet.shopMoney; const alloc=(li.discountAllocations||[]).reduce(function(x,da){return x+parseFloat((da.allocatedAmountSet&&da.allocatedAmountSet.shopMoney&&da.allocatedAmountSet.shopMoney.amount)||0);},0); const amt=Math.max(0,(orig?parseFloat(orig.amount):0)-alloc);
-      if (orig && orig.currencyCode) currency = orig.currencyCode;
+      const m = li.discountedTotalSet && li.discountedTotalSet.shopMoney, amt = m ? parseFloat(m.amount) : 0;
+      if (m && m.currencyCode) currency = m.currencyCode;
       const it = src[tag].items[li.title] || { count: 0, rev: 0 };
       it.count += li.quantity; it.rev += amt; src[tag].items[li.title] = it; src[tag].rev += amt;
     }
@@ -238,8 +238,8 @@ async function loadStats(shop, token, days) {
     const items = Object.keys(s.items).map((key) => ({ title: key, count: s.items[key].count, revenue: Math.round(s.items[key].rev * 100) / 100 })).sort((a, b) => b.count - a.count);
     return { total: items.reduce((x, i) => x + i.count, 0), revenue: Math.round(s.rev * 100) / 100, items };
   };
-  const pdp = pack(src.pdp), cd = pack(src.cart_drawer), sfyPage = pack(src.sfy_page), sfyMenu = pack(src.sfy_menu);
-  return { ordersScanned: orders.length, since, currency, totalRevenue: Math.round((pdp.revenue + cd.revenue + sfyPage.revenue + sfyMenu.revenue) * 100) / 100, totalItems: pdp.total + cd.total + sfyPage.total + sfyMenu.total, pdp, cart_drawer: cd, sfy_page: sfyPage, sfy_menu: sfyMenu };
+  const pdp = pack(src.pdp), cd = pack(src.cart_drawer);
+  return { ordersScanned: orders.length, since, currency, totalRevenue: Math.round((pdp.revenue + cd.revenue) * 100) / 100, totalItems: pdp.total + cd.total, pdp, cart_drawer: cd };
 }
 
 app.get("/stats", async (req, res) => {
@@ -342,7 +342,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted
   <div class="card"><span class="pill">Product page rail</span><div class="big" id="pdpTotal">–</div><div class="rev" id="pdpRev"></div>
     <table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="pdpRows"></tbody></table></div>
   <div class="card"><span class="pill">Cart drawer carousel</span><div class="big" id="cdTotal">–</div><div class="rev" id="cdRev"></div>
-    <table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="cdRows"></tbody></table></div><div class="card"><span class="pill">Selected For You page</span><div class="big" id="spTotal">-</div><div class="rev" id="spRev"></div><table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="spRows"></tbody></table></div><div class="card"><span class="pill">Selected For You mega menu</span><div class="big" id="smTotal">-</div><div class="rev" id="smRev"></div><table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="smRows"></tbody></table></div>
+    <table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="cdRows"></tbody></table></div>
 </div><p class="foot" id="foot"></p></div>
 <script>
 var CUR="";
@@ -365,7 +365,7 @@ function load(){
     document.getElementById("pdpRev").textContent="Revenue: "+fmt(d.pdp&&d.pdp.revenue);
     document.getElementById("cdRev").textContent="Revenue: "+fmt(d.cart_drawer&&d.cart_drawer.revenue);
     rows(document.getElementById("pdpRows"),d.pdp&&d.pdp.items);
-    rows(document.getElementById("cdRows"),d.cart_drawer&&d.cart_drawer.items);document.getElementById("spTotal").textContent=(d.sfy_page&&d.sfy_page.total)||0;document.getElementById("smTotal").textContent=(d.sfy_menu&&d.sfy_menu.total)||0;document.getElementById("spRev").textContent="Revenue: "+fmt(d.sfy_page&&d.sfy_page.revenue);document.getElementById("smRev").textContent="Revenue: "+fmt(d.sfy_menu&&d.sfy_menu.revenue);rows(document.getElementById("spRows"),d.sfy_page&&d.sfy_page.items);rows(document.getElementById("smRows"),d.sfy_menu&&d.sfy_menu.items);
+    rows(document.getElementById("cdRows"),d.cart_drawer&&d.cart_drawer.items);
     document.getElementById("meta").textContent=d.ordersScanned!=null?(d.ordersScanned+" recent orders scanned"):"";
     document.getElementById("foot").textContent="Counts reflect orders since "+(d.since||"")+" whose items were added via a Boko recommendation widget.";
   }).catch(function(){document.getElementById("err").innerHTML="<div class='err'>Couldn't load stats.</div>";});

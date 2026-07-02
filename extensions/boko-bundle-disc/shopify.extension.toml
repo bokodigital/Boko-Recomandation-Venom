@@ -1,0 +1,18 @@
+api_version = "2026-04"
+
+[[extensions]]
+name = "t:name"
+handle = "boko-bundle-disc"
+type = "function"
+uid = "64f825bc-c1ee-f8a3-5f9e-5def83f6ac42e92fb9a5"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "purchase.product-discount.run"
+  input_query = "src/run.graphql"
+  export = "run"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"
+

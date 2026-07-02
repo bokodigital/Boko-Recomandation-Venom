@@ -1,0 +1,15 @@
+{
+  "name": "boko-reco-app",
+  "version": "1.0.0",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "shopify app dev",
+    "deploy": "shopify app deploy"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.9.2",
+    "@shopify/shopify_function": "~2.0.0",
+    "@shopify/ui-extensions": "~2026.01.0",
+    "preact": "^10.29.3"
+  }
+}
