@@ -310,7 +310,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted
   <div class="card"><span class="pill">Product page rail</span><div class="big" id="pdpTotal">–</div><div class="rev" id="pdpRev"></div>
     <table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="pdpRows"></tbody></table></div>
   <div class="card"><span class="pill">Cart drawer carousel</span><div class="big" id="cdTotal">–</div><div class="rev" id="cdRev"></div>
-    <table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="cdRows"></tbody></table></div><div class="card"><span class="pill">Selected For You collection</span><div class="big" id="spTotal">-</div><div class="rev" id="spRev"></div><table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="spRows"></tbody></table></div><div class="card" style="border-top:3px solid #6366f1;background:#f8f7ff;"><span class="pill">Total performance</span><div class="big" id="totTotal">–</div><div class="rev" id="totRev"></div></div>
+    <table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="cdRows"></tbody></table></div><div class="card" style="grid-column:1/-1;"><span class="pill">Selected For You collection</span><div class="big" id="spTotal">-</div><div class="rev" id="spRev"></div><table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="spRows"></tbody></table></div>
 </div><p class="foot" id="foot"></p></div>
 <script>
 var CUR="";
@@ -334,7 +334,6 @@ function load(){
     document.getElementById("cdRev").textContent="Revenue: "+fmt(d.cart_drawer&&d.cart_drawer.revenue);
     rows(document.getElementById("pdpRows"),d.pdp&&d.pdp.items);
     rows(document.getElementById("cdRows"),d.cart_drawer&&d.cart_drawer.items);document.getElementById("spTotal").textContent=(d.sfy_page&&d.sfy_page.total)||0;document.getElementById("spRev").textContent="Revenue: "+fmt(d.sfy_page&&d.sfy_page.revenue);rows(document.getElementById("spRows"),d.sfy_page&&d.sfy_page.items);
-    var totItems=((d.pdp&&d.pdp.total)||0)+((d.cart_drawer&&d.cart_drawer.total)||0)+((d.sfy_page&&d.sfy_page.total)||0);var totRevenue=((d.pdp&&d.pdp.revenue)||0)+((d.cart_drawer&&d.cart_drawer.revenue)||0)+((d.sfy_page&&d.sfy_page.revenue)||0);document.getElementById("totTotal").textContent=totItems;document.getElementById("totRev").textContent="Revenue: "+fmt(totRevenue);
     document.getElementById("meta").textContent=d.ordersScanned!=null?(d.ordersScanned+" recent orders scanned"):"";
     document.getElementById("foot").textContent="Counts reflect orders since "+(d.since||"")+" whose items were added via a Boko recommendation widget.";
   }).catch(function(){document.getElementById("err").innerHTML="<div class='err'>Couldn't load stats.</div>";});
