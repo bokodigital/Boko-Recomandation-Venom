@@ -297,39 +297,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted
 </style>
 <details class="how-to">
   <summary>How to use AI Recommendations <span class="chev">&#9660;</span></summary>
-  <div class="how-to__body">
-    <p>AI Recommendations adds smart, AI-picked &ldquo;You may also like&rdquo; product suggestions to your storefront &mdash; on your <strong>product pages</strong> and inside your <strong>cart drawer</strong>. No code to paste; you add the components from your theme editor.</p>
-
-    <h4>1. Start your subscription</h4>
-    <ol>
-      <li>Open the app from <strong>Apps</strong> in your Shopify admin and approve the permissions.</li>
-      <li>Start the plan (14-day free trial). Recommendations only display while the trial/subscription is active.</li>
-    </ol>
-
-    <h4>2. Add the product-page rail</h4>
-    <ol>
-      <li>Go to <strong>Online Store &rarr; Themes &rarr; Customize</strong>.</li>
-      <li>In the top dropdown choose a <strong>Products</strong> template.</li>
-      <li>Under the product section click <strong>&#65291; Add block</strong> &rarr; choose <strong>AI Recommendations</strong> (under Apps).</li>
-      <li>Drag it where you want it and click <strong>Save</strong>. Shoppers can pick a variant via swatches and add to cart right from the rail.</li>
-    </ol>
-
-    <h4>3. Turn on the cart-drawer carousel</h4>
-    <ol>
-      <li>Still in <strong>Customize</strong>, open <strong>App embeds</strong> (puzzle-piece icon).</li>
-      <li>Switch <strong>AI Cart Recommendations</strong> <strong>On</strong> and click <strong>Save</strong>.</li>
-      <li>It shows a rotating recommendation in the cart drawer, and hides itself when the cart is empty.</li>
-    </ol>
-
-    <h4>4. Custom CSS (optional)</h4>
-    <p>Each component has a <strong>Custom CSS</strong> box in its theme-editor settings &mdash; paste your own CSS to match your brand. Target classes:</p>
-    <p class="muted">Product rail: <code>.boko-reco</code>, <code>.boko-reco__title</code>, <code>.boko-reco__card</code>, <code>.boko-reco__price</code>, <code>.boko-reco__atc</code><br>
-    Cart carousel: <code>.boko-cc</code>, <code>.bcc-h</code>, <code>.bcc-slide</code>, <code>.bcc-img</code>, <code>.bcc-add</code></p>
-
-    <h4>5. How recommendations are chosen</h4>
-    <p>For each product the app scores every other in-stock product by how well it <em>complements</em> the current one &mdash; favouring different-but-related categories, shared tags/title words and a similar price, with a light nudge from how often items are bought and viewed. An AI step then re-orders the shortlist to best &ldquo;complete the look&rdquo;. Only active, in-stock products are ever shown.</p>
-
-    <p class="muted">Need help? Contact Boko at admin@boko.com.au.</p>
+  <div class="how-to__body"><p>AI Recommendations shows AI-picked products in four places: the <strong>product page rail</strong>, the <strong>cart drawer</strong>, a full <strong>&ldquo;Selected for you&rdquo; page</strong>, and a <strong>&ldquo;Selected for you&rdquo; mega-menu</strong>. Shoppers pick a variant and add to cart; on the product page they can also tick items and <strong>Add bundle to cart</strong> for a 10% discount.</p><h4>1. Start your subscription</h4><ol><li>Open the app from <strong>Apps</strong> and approve permissions.</li><li>Start the plan (14-day free trial). Recommendations show while the trial/subscription is active.</li></ol><h4>2. Add the product-page rail</h4><ol><li>Go to <strong>Online Store &rarr; Themes &rarr; Customize</strong>.</li><li>Choose a <strong>Products</strong> template in the top dropdown.</li><li>Under the product section click <strong>&#65291; Add block &rarr; AI Recommendations</strong> (under Apps).</li><li>Drag it into place and <strong>Save</strong>.</li></ol><h4>3. Turn on the cart-drawer carousel</h4><ol><li>Still in <strong>Customize</strong>, open <strong>App embeds</strong> (puzzle-piece icon).</li><li>Enable the Boko cart-drawer embed and <strong>Save</strong>.</li></ol><h4>4. Add the &ldquo;Selected for you&rdquo; page</h4><ol><li><strong>Edit code &rarr; Sections</strong>: add the <strong>boko-selected-for-you</strong> section.</li><li><strong>Online Store &rarr; Pages &rarr; Add page</strong> &ldquo;Selected for you&rdquo; and set its theme template to <strong>selected-for-you</strong>. Live at <strong>/pages/selected-for-you</strong>.</li></ol><h4>5. Add the &ldquo;Selected for you&rdquo; mega menu</h4><ol><li><strong>Edit code &rarr; Snippets</strong>: add the <strong>boko-selected-for-you-megamenu</strong> snippet so it renders in your header. It attaches to the top nav and shows 4 items.</li></ol><h4>6. Set up the bundle discount</h4><ol><li>Open <strong>Discount Bot &rarr; Create discount &rarr; Super discount</strong>; set <strong>Method: Automatic</strong>, title <strong>Bundle 10% Off</strong>.</li><li>Add a <strong>Product</strong> discount of <strong>10%</strong>.</li><li>Enable <strong>Add cart line attribute condition</strong>: key <strong>_boko_bundle</strong>, <strong>Does Match 1</strong>, and set <strong>Minimum quantity 2</strong>. Save.</li><li>Only the product-page <strong>Add bundle to cart</strong> button tags items with <strong>_boko_bundle=1</strong>, so the 10% applies to genuine bundles only.</li></ol><h4>Performance</h4><p>The cards below show items purchased and <strong>net revenue</strong> (after discounts) for each of the four surfaces, for the period you select.</p><p class="muted">Need help? Contact Boko at admin@boko.com.au.</p>
   </div>
 </details>
 <div class="row"><label class="sub" style="margin:0">Period</label>
@@ -342,7 +310,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted
   <div class="card"><span class="pill">Product page rail</span><div class="big" id="pdpTotal">–</div><div class="rev" id="pdpRev"></div>
     <table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="pdpRows"></tbody></table></div>
   <div class="card"><span class="pill">Cart drawer carousel</span><div class="big" id="cdTotal">–</div><div class="rev" id="cdRev"></div>
-    <table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="cdRows"></tbody></table></div><div class="card"><span class="pill">Selected For You page</span><div class="big" id="spTotal">-</div><div class="rev" id="spRev"></div><table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="spRows"></tbody></table></div><div class="card"><span class="pill">Selected For You mega menu</span><div class="big" id="smTotal">-</div><div class="rev" id="smRev"></div><table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="smRows"></tbody></table></div>
+    <table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="cdRows"></tbody></table></div><div class="card"><span class="pill">Selected For You collection</span><div class="big" id="spTotal">-</div><div class="rev" id="spRev"></div><table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="spRows"></tbody></table></div>
 </div><p class="foot" id="foot"></p></div>
 <script>
 var CUR="";
@@ -365,7 +333,7 @@ function load(){
     document.getElementById("pdpRev").textContent="Revenue: "+fmt(d.pdp&&d.pdp.revenue);
     document.getElementById("cdRev").textContent="Revenue: "+fmt(d.cart_drawer&&d.cart_drawer.revenue);
     rows(document.getElementById("pdpRows"),d.pdp&&d.pdp.items);
-    rows(document.getElementById("cdRows"),d.cart_drawer&&d.cart_drawer.items);document.getElementById("spTotal").textContent=(d.sfy_page&&d.sfy_page.total)||0;document.getElementById("smTotal").textContent=(d.sfy_menu&&d.sfy_menu.total)||0;document.getElementById("spRev").textContent="Revenue: "+fmt(d.sfy_page&&d.sfy_page.revenue);document.getElementById("smRev").textContent="Revenue: "+fmt(d.sfy_menu&&d.sfy_menu.revenue);rows(document.getElementById("spRows"),d.sfy_page&&d.sfy_page.items);rows(document.getElementById("smRows"),d.sfy_menu&&d.sfy_menu.items);
+    rows(document.getElementById("cdRows"),d.cart_drawer&&d.cart_drawer.items);document.getElementById("spTotal").textContent=(d.sfy_page&&d.sfy_page.total)||0;document.getElementById("spRev").textContent="Revenue: "+fmt(d.sfy_page&&d.sfy_page.revenue);rows(document.getElementById("spRows"),d.sfy_page&&d.sfy_page.items);
     document.getElementById("meta").textContent=d.ordersScanned!=null?(d.ordersScanned+" recent orders scanned"):"";
     document.getElementById("foot").textContent="Counts reflect orders since "+(d.since||"")+" whose items were added via a Boko recommendation widget.";
   }).catch(function(){document.getElementById("err").innerHTML="<div class='err'>Couldn't load stats.</div>";});
