@@ -135,12 +135,21 @@ async function refineWithLLM({ candidates, anchor }) {
 
 async function recommend({ products, anchor = null, limit = 8, useLLM = true }) {
   const NINETY = 90 * 24 * 60 * 60 * 1000;
-  products = products.filter((p) => {
-    const pub = p.publishedAt || p.published_at || p.createdAt || p.published_date;
-    if (!pub) return false; // no publish date -> exclude
-    return (Date.now() - new Date(pub).getTime()) <= NINETY;
-  });
-  const ranked = rankHeuristic("recommended", products, anchor);
+  const now = Date.now();
+  const getPub = (p) => p.publishedAt || p.published_at || p.createdAt || p.published_date || null;
+  const isRecent = (p) => {
+    const pub = getPub(p);
+    return !!pub && (now - new Date(pub).getTime()) <= NINETY;
+  };
+  const recentProducts = products.filter(isRecent);
+  const olderProducts = products
+    .filter((p) => !isRecent(p))
+    .sort((a, b) => {
+      const pa = getPub(a), pb = getPub(b);
+      return (pb ? new Date(pb).getTime() : 0) - (pa ? new Date(pa).getTime() : 0); // newest first, undated last
+    });
+
+  const ranked = rankHeuristic("recommended", recentProducts, anchor);
   const anchorCat = anchor && anchor.category ? String(anchor.category).toLowerCase() : "";
   const bycat = new Map();
   for (const p of ranked) {
@@ -171,7 +180,20 @@ async function recommend({ products, anchor = null, limit = 8, useLLM = true }) 
     const refined = await refineWithLLM({ candidates, anchor });
     if (refined && refined.length) ordered = refined;
   }
-  return ordered.slice(0, limit);
+  ordered = ordered.slice(0, limit);
+
+  if (ordered.length < limit && olderProducts.length) {
+    const used = new Set(ordered.map((p) => p.id));
+    if (anchor) used.add(anchor.id);
+    for (const p of olderProducts) {
+      if (ordered.length >= limit) break;
+      if (used.has(p.id)) continue;
+      ordered.push(p);
+      used.add(p.id);
+    }
+  }
+
+  return ordered;
 }
 
 export { recommend, rankHeuristic, bundlePricing, refineWithLLM, parseIds, HEURISTIC };
