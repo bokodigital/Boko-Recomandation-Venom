@@ -1,0 +1,172 @@
+Append the following self-contained script to the END of the site-wide storefront script (storefront.js -- the one injected via ScriptTag on all storefront pages). Do NOT change anything else in storefront.js. It sends click + add-to-cart tracking beacons to /apps/reco/track and does click-through purchase attribution. After adding it, republish to production.
+
+(function(){
+  "use strict";
+  try {
+    var KEY = "boko_attr_v1";
+    var TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+    var MAX = 60;
+    var TRACK_URL = "/apps/reco/track"; // app proxy -> app /track route
+
+    function now(){ return Date.now(); }
+    function read(){
+      try { var o = JSON.parse(localStorage.getItem(KEY) || "{}"); return (o && typeof o === "object") ? o : {}; }
+      catch(e){ return {}; }
+    }
+    function write(o){ try { localStorage.setItem(KEY, JSON.stringify(o)); } catch(e){} }
+    function prune(o){
+      var t = now(), keep = {};
+      Object.keys(o).forEach(function(h){ if (o[h] && (t - o[h].t) < TTL) keep[h] = o[h]; });
+      var ks = Object.keys(keep).sort(function(a,b){ return keep[b].t - keep[a].t; }).slice(0, MAX);
+      var out = {}; ks.forEach(function(h){ out[h] = keep[h]; });
+      return out;
+    }
+
+    function beacon(payload){
+      try {
+        var body = JSON.stringify(payload);
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(TRACK_URL, new Blob([body], { type: "application/json" }));
+        } else if (window.fetch) {
+          window.fetch(TRACK_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: body, keepalive: true }).catch(function(){});
+        }
+      } catch(e){}
+    }
+
+    function classify(a){
+      if (a.closest('[class*="boko-sfy"],[id^="boko-sfy"],[id*="boko-sfy"]'))
+        return { k: "_boko_source", v: "selected-for-you-page" };
+      if (a.closest('[class*="boko-cc"],[id*="boko-cc"],[class*="boko-cart"]'))
+        return { k: "_boko_reco", v: "cart_drawer" };
+      if (a.closest('[class*="boko-reco"],[class*="boko-recommendation"],[id*="boko-reco"]'))
+        return { k: "_boko_reco", v: "pdp" };
+      return null;
+    }
+    function handleFromHref(href){
+      try { var m = String(href).match(/\/products\/([^\/?#]+)/); return m ? m[1] : null; } catch(e){ return null; }
+    }
+
+    /* 1) capture component product clicks */
+    document.addEventListener("click", function(e){
+      try {
+        var a = e.target && e.target.closest ? e.target.closest('a[href*="/products/"]') : null;
+        if (!a) return;
+        var src = classify(a);
+        if (!src) return;
+        var handle = handleFromHref(a.getAttribute("href") || a.href);
+        if (!handle) return;
+        var o = prune(read());
+        o[handle] = { k: src.k, v: src.v, t: now() };
+        write(prune(o));
+        beacon({ event: "click", source: src.v, handle: handle });
+      } catch(err){}
+    }, true);
+
+    /* 2) should we stamp adds on THIS product page? */
+    var m = location.pathname.match(/\/products\/([^\/?#]+)/);
+    var pdpHandle = m ? m[1] : (window.ShopifyAnalytics && ShopifyAnalytics.meta && ShopifyAnalytics.meta.product && ShopifyAnalytics.meta.product.handle) || null;
+    var SRC = null;
+    if (pdpHandle) {
+      var rec = prune(read())[pdpHandle];
+      if (rec && (now() - rec.t) < TTL) SRC = { k: rec.k, v: rec.v };
+    }
+
+    /* 3) intercept /cart/add: stamp (if applicable) + report the add */
+    function detectSourceString(str){
+      var m2 = String(str).match(/_boko_(?:source|reco)(?:"\s*:\s*"|%5D=|\]=)\s*([a-z0-9_\-]+)/i);
+      return m2 ? m2[1] : null;
+    }
+    function sourceOf(body){
+      try {
+        if (typeof body === "string") return detectSourceString(body);
+        if (typeof FormData !== "undefined" && body instanceof FormData) {
+          var r = null; body.forEach(function(v, k){ if (/_boko_(source|reco)/i.test(k)) r = v; }); return r;
+        }
+        if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
+          var r2 = null; body.forEach(function(v, k){ if (/_boko_(source|reco)/i.test(k)) r2 = v; }); return r2;
+        }
+      } catch(e){}
+      return null;
+    }
+    function bodyHasBoko(str){ return /properties(\[|%5B)_boko/i.test(String(str)) || /"_boko_[a-z]+"/i.test(String(str)); }
+
+    function addToItem(it){
+      if (!it || typeof it !== "object") return it;
+      it.properties = it.properties || {};
+      var has = Object.keys(it.properties).some(function(k){ return /^_boko_/.test(k); });
+      if (!has && SRC) it.properties[SRC.k] = SRC.v;
+      return it;
+    }
+    function tagBody(body){
+      try {
+        if (!SRC) return body;
+        if (typeof body === "string") {
+          if (bodyHasBoko(body)) return body;
+          var s = body.trim();
+          if (s.charAt(0) === "{") {
+            var obj = JSON.parse(s);
+            if (obj.items && obj.items.length) obj.items.forEach(addToItem);
+            else if (obj.id) addToItem(obj);
+            return JSON.stringify(obj);
+          }
+          if (s.indexOf("=") > -1) return s + "&properties%5B" + encodeURIComponent(SRC.k) + "%5D=" + encodeURIComponent(SRC.v);
+          return body;
+        }
+        if (typeof FormData !== "undefined" && body instanceof FormData) {
+          var tagged = false; try { body.forEach(function(_, k){ if (/^properties\[_boko/i.test(k)) tagged = true; }); } catch(e){}
+          if (!tagged) body.append("properties[" + SRC.k + "]", SRC.v);
+          return body;
+        }
+        if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
+          var found = false; body.forEach(function(_, k){ if (/^properties\[_boko/i.test(k)) found = true; });
+          if (!found) body.append("properties[" + SRC.k + "]", SRC.v);
+          return body;
+        }
+        return body;
+      } catch(e){ return body; }
+    }
+
+    function reportAdd(newBody){
+      try { var v = sourceOf(newBody) || (SRC && SRC.v); if (v) beacon({ event: "add", source: v }); } catch(e){}
+    }
+
+    function injectForms(){
+      try {
+        if (!SRC) return;
+        var forms = document.querySelectorAll('form[action*="/cart/add"]');
+        [].forEach.call(forms, function(f){
+          if (f.querySelector('[name^="properties[_boko"]')) return;
+          if (f.querySelector('input[data-boko-attr]')) return;
+          var inp = document.createElement("input");
+          inp.type = "hidden"; inp.name = "properties[" + SRC.k + "]"; inp.value = SRC.v;
+          inp.setAttribute("data-boko-attr", "1");
+          f.appendChild(inp);
+        });
+      } catch(e){}
+    }
+    if (document.readyState !== "loading") injectForms(); else document.addEventListener("DOMContentLoaded", injectForms);
+    try { new MutationObserver(injectForms).observe(document.documentElement, { childList: true, subtree: true }); } catch(e){}
+
+    if (window.fetch) {
+      var _fetch = window.fetch;
+      window.fetch = function(input, init){
+        try {
+          var url = (typeof input === "string") ? input : (input && input.url) || "";
+          if (url.indexOf("/cart/add") > -1 && init && init.body) {
+            init.body = tagBody(init.body);
+            reportAdd(init.body);
+          }
+        } catch(e){}
+        return _fetch.apply(this, arguments);
+      };
+    }
+    try {
+      var _open = XMLHttpRequest.prototype.open, _send = XMLHttpRequest.prototype.send;
+      XMLHttpRequest.prototype.open = function(method, url){ this.__bokoAdd = String(url).indexOf("/cart/add") > -1; return _open.apply(this, arguments); };
+      XMLHttpRequest.prototype.send = function(body){
+        try { if (this.__bokoAdd && body) { arguments[0] = tagBody(body); reportAdd(arguments[0]); } } catch(e){}
+        return _send.apply(this, arguments);
+      };
+    } catch(e){}
+  } catch(err){}
+})();
