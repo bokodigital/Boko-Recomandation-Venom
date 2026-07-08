@@ -1,0 +1,1 @@
+- [Boko Reco app scopes & tracking](boko-reco-scopes.md) — current OAuth scopes lack write_script_tags; ScriptTag-based storefront injection was explicitly rejected, tracking loads via theme instead.
