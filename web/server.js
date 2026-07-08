@@ -259,8 +259,8 @@ app.get("/stats", async (req, res) => {
   }
 });
 
-// storefront beacon — reached via the /apps/reco/track app proxy
-app.post("/track", express.json({ type: () => true, limit: "2kb" }), (req, res) => {
+// storefront beacon — reached via the /apps/reco/track app proxy (proxy forwards /apps/reco/<x> -> /proxy/<x>)
+app.post("/proxy/track", express.json({ type: () => true, limit: "2kb" }), (req, res) => {
   try { const b = req.body || {}; track(b.event, b.source); } catch (e) {}
   res.status(204).end();
 });
