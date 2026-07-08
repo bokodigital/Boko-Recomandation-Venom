@@ -134,6 +134,12 @@ async function refineWithLLM({ candidates, anchor }) {
 }
 
 async function recommend({ products, anchor = null, limit = 8, useLLM = true }) {
+  const NINETY = 90 * 24 * 60 * 60 * 1000;
+  products = products.filter((p) => {
+    const pub = p.publishedAt || p.published_at || p.createdAt || p.published_date;
+    if (!pub) return false; // no publish date -> exclude
+    return (Date.now() - new Date(pub).getTime()) <= NINETY;
+  });
   const ranked = rankHeuristic("recommended", products, anchor);
   const anchorCat = anchor && anchor.category ? String(anchor.category).toLowerCase() : "";
   const bycat = new Map();

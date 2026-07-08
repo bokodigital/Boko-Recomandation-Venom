@@ -20,6 +20,7 @@ import express from "express";
 import crypto from "crypto";
 import Database from "@replit/database";
 import { recommend } from "./recommendations.js";
+import { track, funnelCounts } from "./boko-tracker.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const API_KEY = process.env.SHOPIFY_API_KEY || "";
@@ -258,6 +259,53 @@ app.get("/stats", async (req, res) => {
   }
 });
 
+// storefront beacon — reached via the /apps/reco/track app proxy
+app.post("/track", express.json({ type: () => true, limit: "2kb" }), (req, res) => {
+  try { const b = req.body || {}; track(b.event, b.source); } catch (e) {}
+  res.status(204).end();
+});
+
+// funnel data for the dashboard
+app.get("/funnel", async (req, res) => {
+  res.set("Content-Type", "application/json");
+  try {
+    const idToken = (req.headers.authorization || "").replace(/^Bearer /, "");
+    const shop = shopFromSessionToken(idToken);
+    if (!shop) return res.status(401).send(JSON.stringify({ error: "unauthorized" }));
+    let token = await getToken(shop);
+    if (!token) token = await tokenExchange(shop, idToken);
+    const days = parseInt(req.query.days, 10) || 90;
+    const clicks = funnelCounts(days);
+    const buys = { pdp: { count: 0, rev: 0 }, cart_drawer: { count: 0, rev: 0 }, sfy: { count: 0, rev: 0 } };
+    let currency = "";
+    if (token) {
+      try {
+        const since = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+        const q = `query($n:Int!,$q:String){ orders(first:$n,reverse:true,query:$q){ edges{ node{ lineItems(first:50){ edges{ node{ quantity discountedTotalSet{ shopMoney{ amount currencyCode } } customAttributes{ key value } } } } } } } }`;
+        const j = await gql(shop, token, q, { n: 100, q: "created_at:>=" + since });
+        const orders = (j.data && j.data.orders && j.data.orders.edges) || [];
+        orders.forEach((o) => (o.node.lineItems.edges || []).forEach((le) => {
+          const li = le.node; let s = null;
+          (li.customAttributes || []).forEach((a) => {
+            if (a.key === "_boko_reco" && (a.value === "pdp" || a.value === "cart_drawer")) s = a.value;
+            if (a.key === "_boko_source" && String(a.value).indexOf("selected-for-you") > -1) s = "sfy";
+          });
+          if (s) {
+            const m = li.discountedTotalSet && li.discountedTotalSet.shopMoney;
+            buys[s].count += li.quantity;
+            buys[s].rev += m ? parseFloat(m.amount) : 0;
+            if (m && m.currencyCode) currency = m.currencyCode;
+          }
+        }));
+      } catch (e) {}
+    }
+    const pack = (s) => ({ clicks: clicks[s].click, adds: clicks[s].add, purchases: buys[s].count, revenue: Math.round(buys[s].rev * 100) / 100 });
+    res.status(200).send(JSON.stringify({ days, currency, sfy: pack("sfy"), pdp: pack("pdp"), cart_drawer: pack("cart_drawer") }));
+  } catch (e) {
+    res.status(200).send(JSON.stringify({ error: e.message, sfy: { clicks: 0, adds: 0, purchases: 0, revenue: 0 }, pdp: { clicks: 0, adds: 0, purchases: 0, revenue: 0 }, cart_drawer: { clicks: 0, adds: 0, purchases: 0, revenue: 0 } }));
+  }
+});
+
 const DASHBOARD = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 __APP_BRIDGE__
 <title>Boko Recommendations — Dashboard</title>
@@ -311,11 +359,69 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted
     <table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="pdpRows"></tbody></table></div>
   <div class="card"><span class="pill">Cart drawer carousel</span><div class="big" id="cdTotal">–</div><div class="rev" id="cdRev"></div>
     <table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="cdRows"></tbody></table></div><div class="card" style="grid-column:1/-1;"><span class="pill">Selected For You collection</span><div class="big" id="spTotal">-</div><div class="rev" id="spRev"></div><table><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Revenue</th></tr></thead><tbody id="spRows"></tbody></table></div>
-</div><p class="foot" id="foot"></p></div>
+</div><p class="foot" id="foot"></p>
+<div id="bkFunnel" style="margin-top:28px;font-family:'Poppins',system-ui,sans-serif">
+  <div style="margin-bottom:14px">
+    <div style="font-size:18px;font-weight:600">User Flow by Component</div>
+    <div style="font-size:12px;color:#6b7280;margin-top:2px">Clicks &rarr; Add to cart &rarr; Purchases &middot; attributed to the source component</div>
+  </div>
+  <div id="bkFunnelGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px"></div>
+</div>
+</div>
+<style>
+  #bkFunnel .bkc{background:#fff;border:1px solid #ececf2;border-radius:14px;padding:16px}
+  #bkFunnel .bkh{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;font-weight:600}
+  #bkFunnel .bkdot{width:9px;height:9px;border-radius:3px;background:#BFFC00;box-shadow:0 0 0 3px rgba(191,252,0,.18)}
+  #bkFunnel .bkrow{display:flex;justify-content:space-between;align-items:baseline}
+  #bkFunnel .bkl{font-size:12px;color:#6b7280;font-weight:500}
+  #bkFunnel .bkn{font-size:18px;font-weight:600}
+  #bkFunnel .bkbar{height:9px;background:#F1F2F7;border-radius:6px;overflow:hidden;margin-top:5px}
+  #bkFunnel .bkfill{height:100%;background:#BFFC00;border-radius:6px}
+  #bkFunnel .bkfill.dark{background:#111}
+  #bkFunnel .bkconv{font-size:11px;color:#9aa0ab;margin:7px 0 10px}
+  #bkFunnel .bkconv b{color:#111;font-weight:600}
+  #bkFunnel .bkfoot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px dashed #ececf2}
+  #bkFunnel .bkfoot .l{font-size:11px;color:#6b7280}
+  #bkFunnel .bkfoot .v{font-size:15px;font-weight:600}
+  @media(max-width:760px){#bkFunnelGrid{grid-template-columns:1fr!important}}
+</style>
 <script>
 var CUR="";
 function fmt(n){try{return new Intl.NumberFormat(undefined,{style:"currency",currency:CUR||"USD"}).format(n||0);}catch(e){return "$"+(Number(n||0)).toFixed(2);}}
 function rows(tb,items){tb.innerHTML=(items&&items.length)?items.map(function(i){return "<tr><td>"+i.title+"</td><td class='n'>"+i.count+"</td><td class='r'>"+fmt(i.revenue)+"</td></tr>";}).join(""):"<tr><td colspan='3' class='empty'>No purchases yet from this source.</td></tr>";}
+function bkFunnel(days){
+  days = days || 90;
+  authedFetch("/funnel?days=" + days).then(function(d){
+    var cur = d.currency || "";
+    var defs = [
+      { key:"sfy",         name:"Selected For You" },
+      { key:"pdp",         name:"Product Rail (PDP)" },
+      { key:"cart_drawer", name:"Cart Drawer" }
+    ];
+    function pct(a,b){ return b>0 ? Math.round(a/b*100) : 0; }
+    function nn(x){ return (x||0).toLocaleString(); }
+    function money(x){ return (cur? cur+" " : "$") + (Math.round(x||0)).toLocaleString(); }
+    function card(def){
+      var s = d[def.key] || { clicks:0, adds:0, purchases:0, revenue:0 };
+      var wAdd = pct(s.adds, s.clicks), wBuy = pct(s.purchases, s.clicks);
+      var addRate = pct(s.adds, s.clicks), buyRate = pct(s.purchases, s.adds), cvr = pct(s.purchases, s.clicks);
+      return '<div class="bkc">'
+        + '<div class="bkh"><span class="bkdot"></span>' + def.name + '</div>'
+        + '<div><div class="bkrow"><span class="bkl">Clicks</span><span class="bkn">' + nn(s.clicks) + '</span></div>'
+        +   '<div class="bkbar"><div class="bkfill" style="width:100%"></div></div></div>'
+        + '<div class="bkconv"><b>' + addRate + '%</b> added to cart</div>'
+        + '<div><div class="bkrow"><span class="bkl">Add to cart</span><span class="bkn">' + nn(s.adds) + '</span></div>'
+        +   '<div class="bkbar"><div class="bkfill" style="width:' + wAdd + '%"></div></div></div>'
+        + '<div class="bkconv"><b>' + buyRate + '%</b> of carts purchased</div>'
+        + '<div><div class="bkrow"><span class="bkl">Purchases</span><span class="bkn">' + nn(s.purchases) + '</span></div>'
+        +   '<div class="bkbar"><div class="bkfill dark" style="width:' + Math.max(wBuy,3) + '%"></div></div></div>'
+        + '<div class="bkfoot"><div><div class="l">Revenue</div><div class="v">' + money(s.revenue) + '</div></div>'
+        +   '<div style="text-align:right"><div class="l">Click &rarr; buy</div><div class="v">' + cvr + '%</div></div></div>'
+        + '</div>';
+    }
+    document.getElementById("bkFunnelGrid").innerHTML = defs.map(card).join("");
+  }).catch(function(){});
+}
 async function authedFetch(url){
   var headers={Accept:"application/json"};
   try{ if(window.shopify&&shopify.idToken){ var t=await shopify.idToken(); headers.Authorization="Bearer "+t; } }catch(e){}
@@ -337,6 +443,7 @@ function load(){
     document.getElementById("meta").textContent=d.ordersScanned!=null?(d.ordersScanned+" recent orders scanned"):"";
     document.getElementById("foot").textContent="Counts reflect orders since "+(d.since||"")+" whose items were added via a Boko recommendation widget.";
   }).catch(function(){document.getElementById("err").innerHTML="<div class='err'>Couldn't load stats.</div>";});
+  bkFunnel(days);
 }
 document.getElementById("days").addEventListener("change",load); load();
 </script></body></html>`;
