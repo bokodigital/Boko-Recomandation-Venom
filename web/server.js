@@ -419,27 +419,23 @@ app.get("/stats", async (req, res) => {
     let token = await getToken(shop);
     if (!token) token = await tokenExchange(shop, idToken);
     if (!token)
-      return res
-        .status(200)
-        .send(
-          JSON.stringify({
-            error: "not installed",
-            pdp: { total: 0, revenue: 0, items: [] },
-            cart_drawer: { total: 0, revenue: 0, items: [] },
-          }),
-        );
-    const days = Math.min(parseInt(req.query.days || "90", 10), 365);
-    res.status(200).send(JSON.stringify(await loadStats(shop, token, days)));
-  } catch (e) {
-    res
-      .status(200)
-      .send(
+      return res.status(200).send(
         JSON.stringify({
-          error: e.message,
+          error: "not installed",
           pdp: { total: 0, revenue: 0, items: [] },
           cart_drawer: { total: 0, revenue: 0, items: [] },
         }),
       );
+    const days = Math.min(parseInt(req.query.days || "90", 10), 365);
+    res.status(200).send(JSON.stringify(await loadStats(shop, token, days)));
+  } catch (e) {
+    res.status(200).send(
+      JSON.stringify({
+        error: e.message,
+        pdp: { total: 0, revenue: 0, items: [] },
+        cart_drawer: { total: 0, revenue: 0, items: [] },
+      }),
+    );
   }
 });
 
@@ -479,7 +475,7 @@ app.get("/funnel", async (req, res) => {
         const since = new Date(Date.now() - days * 864e5)
           .toISOString()
           .slice(0, 10);
-        const q = `query($n:Int!,$q:String){ orders(first:$n,reverse:true,query:$q){ edges{ node{ lineItems(first:50){ edges{ node{ quantity discountedTotalSet{ shopMoney{ amount currencyCode } } customAttributes{ key value } } } } } } } }`;
+        const q = `query($n:Int!,$q:String){ orders(first:$n,reverse:true,query:$q){ edges{ node{ lineItems(first:50){ edges{ node{ quantity originalTotalSet{ shopMoney{ amount currencyCode } } discountAllocations{ allocatedAmountSet{ shopMoney{ amount } } } customAttributes{ key value } } } } } } } }`;
         const j = await gql(shop, token, q, {
           n: 100,
           q: "created_at:>=" + since,
@@ -502,10 +498,26 @@ app.get("/funnel", async (req, res) => {
                 s = "sfy";
             });
             if (s) {
-              const m =
-                li.discountedTotalSet && li.discountedTotalSet.shopMoney;
+              const m = li.originalTotalSet && li.originalTotalSet.shopMoney;
+              const bAlloc = (li.discountAllocations || []).reduce(function (
+                x,
+                da,
+              ) {
+                return (
+                  x +
+                  parseFloat(
+                    (da.allocatedAmountSet &&
+                      da.allocatedAmountSet.shopMoney &&
+                      da.allocatedAmountSet.shopMoney.amount) ||
+                      0,
+                  )
+                );
+              }, 0);
               buys[s].count += li.quantity;
-              buys[s].rev += m ? parseFloat(m.amount) : 0;
+              buys[s].rev += Math.max(
+                0,
+                (m ? parseFloat(m.amount) : 0) - bAlloc,
+              );
               if (m && m.currencyCode) currency = m.currencyCode;
             }
           }),
@@ -518,28 +530,24 @@ app.get("/funnel", async (req, res) => {
       purchases: buys[s].count,
       revenue: Math.round(buys[s].rev * 100) / 100,
     });
-    res
-      .status(200)
-      .send(
-        JSON.stringify({
-          days,
-          currency,
-          sfy: pack("sfy"),
-          pdp: pack("pdp"),
-          cart_drawer: pack("cart_drawer"),
-        }),
-      );
+    res.status(200).send(
+      JSON.stringify({
+        days,
+        currency,
+        sfy: pack("sfy"),
+        pdp: pack("pdp"),
+        cart_drawer: pack("cart_drawer"),
+      }),
+    );
   } catch (e) {
-    res
-      .status(200)
-      .send(
-        JSON.stringify({
-          error: e.message,
-          sfy: { clicks: 0, adds: 0, purchases: 0, revenue: 0 },
-          pdp: { clicks: 0, adds: 0, purchases: 0, revenue: 0 },
-          cart_drawer: { clicks: 0, adds: 0, purchases: 0, revenue: 0 },
-        }),
-      );
+    res.status(200).send(
+      JSON.stringify({
+        error: e.message,
+        sfy: { clicks: 0, adds: 0, purchases: 0, revenue: 0 },
+        pdp: { clicks: 0, adds: 0, purchases: 0, revenue: 0 },
+        cart_drawer: { clicks: 0, adds: 0, purchases: 0, revenue: 0 },
+      }),
+    );
   }
 });
 
