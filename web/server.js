@@ -37,15 +37,25 @@ async function getToken(shop) {
   if (r && typeof r === "object" && "ok" in r) return r.ok ? r.value : null;
   return r || null;
 }
-async function setToken(shop, token) { await db.set(k(shop), token); }
-async function delToken(shop) { try { await db.delete(k(shop)); } catch (e) {} }
+async function setToken(shop, token) {
+  await db.set(k(shop), token);
+}
+async function delToken(shop) {
+  try {
+    await db.delete(k(shop));
+  } catch (e) {}
+}
 
-const validShop = (s) => /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(s || "");
+const validShop = (s) =>
+  /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(s || "");
 
 async function gql(shop, token, query, variables) {
   const r = await fetch(`https://${shop}/admin/api/${API}/graphql.json`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token,
+    },
     body: JSON.stringify({ query, variables }),
   });
   return r.json();
@@ -55,7 +65,11 @@ const app = express();
 // Raw body only for webhooks (needed for HMAC); JSON for everything else.
 app.use("/webhooks", express.raw({ type: "*/*" }));
 app.use(express.json());
-app.use((req, res, next) => { res.set("Access-Control-Allow-Origin", "*"); res.set("Access-Control-Allow-Methods", "GET,OPTIONS"); next(); });
+app.use((req, res, next) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "GET,OPTIONS");
+  next();
+});
 
 // ---------- OAuth ----------
 app.get("/auth", (req, res) => {
@@ -63,7 +77,8 @@ app.get("/auth", (req, res) => {
   if (!validShop(shop)) return res.status(400).send("Missing or invalid ?shop");
   const redirectUri = HOST + "/auth/callback";
   const state = crypto.randomBytes(16).toString("hex");
-  const url = `https://${shop}/admin/oauth/authorize?client_id=${API_KEY}` +
+  const url =
+    `https://${shop}/admin/oauth/authorize?client_id=${API_KEY}` +
     `&scope=${encodeURIComponent(SCOPES)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
   res.redirect(url);
 });
@@ -74,22 +89,37 @@ app.get("/auth/callback", async (req, res) => {
     if (!validShop(shop)) return res.status(400).send("Invalid shop");
     // Verify HMAC over the query (excluding hmac/signature)
     const params = { ...req.query };
-    delete params.hmac; delete params.signature;
-    const message = Object.keys(params).sort().map((key) => `${key}=${params[key]}`).join("&");
-    const digest = crypto.createHmac("sha256", API_SECRET).update(message).digest("hex");
+    delete params.hmac;
+    delete params.signature;
+    const message = Object.keys(params)
+      .sort()
+      .map((key) => `${key}=${params[key]}`)
+      .join("&");
+    const digest = crypto
+      .createHmac("sha256", API_SECRET)
+      .update(message)
+      .digest("hex");
     if (digest !== hmac) return res.status(400).send("HMAC validation failed");
     // Exchange the code for a permanent access token
     const tok = await fetch(`https://${shop}/admin/oauth/access_token`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id: API_KEY, client_secret: API_SECRET, code }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: API_KEY,
+        client_secret: API_SECRET,
+        code,
+      }),
     }).then((r) => r.json());
     if (!tok.access_token) return res.status(500).send("Token exchange failed");
     await setToken(shop, tok.access_token);
     // Register the uninstall webhook so we clean up this shop's token automatically
     try {
-      await gql(shop, tok.access_token,
+      await gql(
+        shop,
+        tok.access_token,
         `mutation($u:URL!){ webhookSubscriptionCreate(topic: APP_UNINSTALLED, webhookSubscription:{ callbackUrl:$u, format: JSON }){ userErrors{ message } } }`,
-        { u: HOST + "/webhooks/app_uninstalled" });
+        { u: HOST + "/webhooks/app_uninstalled" },
+      );
     } catch (e) {}
     // Open the embedded app in admin
     res.redirect(`https://${shop}/admin/apps/${API_KEY}`);
@@ -102,11 +132,25 @@ app.get("/auth/callback", async (req, res) => {
 function verifyProxy(query) {
   const { signature, ...rest } = query;
   if (!signature) return false;
-  const message = Object.keys(rest).sort()
-    .map((key) => `${key}=${Array.isArray(rest[key]) ? rest[key].join(",") : rest[key]}`).join("");
-  const digest = crypto.createHmac("sha256", API_SECRET).update(message).digest("hex");
-  try { return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(String(signature))); }
-  catch (e) { return false; }
+  const message = Object.keys(rest)
+    .sort()
+    .map(
+      (key) =>
+        `${key}=${Array.isArray(rest[key]) ? rest[key].join(",") : rest[key]}`,
+    )
+    .join("");
+  const digest = crypto
+    .createHmac("sha256", API_SECRET)
+    .update(message)
+    .digest("hex");
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(digest),
+      Buffer.from(String(signature)),
+    );
+  } catch (e) {
+    return false;
+  }
 }
 
 async function loadProducts(shop, token, limit = 100, productType = "") {
@@ -115,62 +159,103 @@ async function loadProducts(shop, token, limit = 100, productType = "") {
   const query = `query($n:Int!){ products(first:$n, query:"${qstr}", sortKey: PUBLISHED_AT, reverse: true){ edges{ node{ id title handle productType vendor tags publishedAt createdAt isGiftCard collections(first:20){ edges{ node{ handle } } } options{ name values } featuredImage{url} variants(first:100){ edges{ node{ id title price availableForSale selectedOptions{ name value } } } } } } } }`;
   const j = await gql(shop, token, query, { n: limit });
   const edges = (j.data && j.data.products && j.data.products.edges) || [];
-  return edges.map((e, i) => {
-    const n = e.node;
-    const varEdges = (n.variants && n.variants.edges) || [];
-    const v = varEdges[0] && varEdges[0].node;
-    const rawOpts = n.options || [];
-    const options = rawOpts
-      .filter((o) => !(o.name === "Title" && o.values.length === 1 && o.values[0] === "Default Title"))
-      .map((o) => ({ name: o.name, values: o.values }));
-    const variants = varEdges.map((ve) => {
-      const vn = ve.node;
-      const m = String(vn.id).match(/(\d+)$/);
+  return edges
+    .map((e, i) => {
+      const n = e.node;
+      const varEdges = (n.variants && n.variants.edges) || [];
+      const v = varEdges[0] && varEdges[0].node;
+      const rawOpts = n.options || [];
+      const options = rawOpts
+        .filter(
+          (o) =>
+            !(
+              o.name === "Title" &&
+              o.values.length === 1 &&
+              o.values[0] === "Default Title"
+            ),
+        )
+        .map((o) => ({ name: o.name, values: o.values }));
+      const variants = varEdges.map((ve) => {
+        const vn = ve.node;
+        const m = String(vn.id).match(/(\d+)$/);
+        return {
+          id: m ? m[1] : vn.id,
+          title: vn.title,
+          price: parseFloat(vn.price),
+          available: !!vn.availableForSale,
+          options: options.map((o) => {
+            const so = (vn.selectedOptions || []).find(
+              (s) => s.name === o.name,
+            );
+            return so ? so.value : null;
+          }),
+        };
+      });
+      const collHandles = ((n.collections && n.collections.edges) || []).map(
+        (ce) => (ce.node.handle || "").toLowerCase(),
+      );
+      const tags = (n.tags || []).map((t) => String(t).toLowerCase());
+      const isGift =
+        n.isGiftCard === true ||
+        (n.productType || "").toLowerCase().includes("gift") ||
+        tags.some((t) => t.includes("gift")) ||
+        collHandles.some((h) => h.includes("gift"));
+      if (isGift) return null;
       return {
-        id: m ? m[1] : vn.id,
-        title: vn.title,
-        price: parseFloat(vn.price),
-        available: !!vn.availableForSale,
-        options: options.map((o) => {
-          const so = (vn.selectedOptions || []).find((s) => s.name === o.name);
-          return so ? so.value : null;
-        }),
+        id: n.id,
+        handle: n.handle,
+        variantId: v && v.id,
+        available: !!(v && v.availableForSale),
+        title: n.title,
+        vendor: n.vendor,
+        tags: n.tags || [],
+        category: (n.productType || "").toLowerCase(),
+        price: v ? parseFloat(v.price) : 0,
+        img: (n.featuredImage && n.featuredImage.url) || "",
+        options,
+        variants,
+        createdAt: n.publishedAt || n.createdAt || null,
+        orders: Math.max(0, limit - i) * 3,
+        views: 0,
       };
-    });
-    const collHandles = ((n.collections && n.collections.edges) || []).map((ce) => (ce.node.handle || "").toLowerCase());
-    const tags = (n.tags || []).map((t) => String(t).toLowerCase());
-    const isGift = n.isGiftCard === true
-      || (n.productType || "").toLowerCase().includes("gift")
-      || tags.some((t) => t.includes("gift"))
-      || collHandles.some((h) => h.includes("gift"));
-    if (isGift) return null;
-    return { id: n.id, handle: n.handle, variantId: v && v.id, available: !!(v && v.availableForSale),
-      title: n.title, vendor: n.vendor, tags: n.tags || [], category: (n.productType || "").toLowerCase(),
-      price: v ? parseFloat(v.price) : 0, img: (n.featuredImage && n.featuredImage.url) || "",
-      options, variants, createdAt: n.publishedAt || n.createdAt || null,
-      orders: Math.max(0, limit - i) * 3, views: 0 };
-  }).filter((p) => p && p.variantId && p.available);
+    })
+    .filter((p) => p && p.variantId && p.available);
 }
 
 app.get("/proxy/recommend", async (req, res) => {
   res.set("Content-Type", "application/json");
   try {
-    if (!verifyProxy(req.query)) return res.status(401).send(JSON.stringify({ items: [], error: "bad signature" }));
+    if (!verifyProxy(req.query))
+      return res
+        .status(401)
+        .send(JSON.stringify({ items: [], error: "bad signature" }));
     const shop = req.query.shop;
     const token = await getToken(shop);
-    if (!token) return res.status(200).send(JSON.stringify({ items: [], error: "app not installed for shop" }));
+    if (!token)
+      return res
+        .status(200)
+        .send(
+          JSON.stringify({ items: [], error: "app not installed for shop" }),
+        );
     const limit = Math.min(parseInt(req.query.limit || "8", 10), 24);
     const atype = (req.query.atype || "").trim();
     const anum = (req.query.anchor || "").trim();
     let products = await loadProducts(shop, token, 250);
     const found = anum ? products.find((p) => p.id.endsWith(anum)) : null;
-    const anchor = found || ((atype || req.query.atitle) ? {
-      id: "anchor:" + anum,
-      title: req.query.atitle || "",
-      category: atype.toLowerCase(),
-      tags: (req.query.atags || "").split(",").map((s) => s.trim()).filter(Boolean),
-      price: parseFloat(req.query.aprice || "0") || 0,
-    } : null);
+    const anchor =
+      found ||
+      (atype || req.query.atitle
+        ? {
+            id: "anchor:" + anum,
+            title: req.query.atitle || "",
+            category: atype.toLowerCase(),
+            tags: (req.query.atags || "")
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+            price: parseFloat(req.query.aprice || "0") || 0,
+          }
+        : null);
     if (anum) products = products.filter((p) => !p.id.endsWith(anum));
     const items = await recommend({ products, anchor, limit });
     res.status(200).send(JSON.stringify({ items }));
@@ -184,63 +269,147 @@ function shopFromSessionToken(idToken) {
   try {
     const [h, p, s] = (idToken || "").split(".");
     if (!h || !p || !s) return null;
-    const expected = crypto.createHmac("sha256", API_SECRET).update(h + "." + p).digest("base64url");
+    const expected = crypto
+      .createHmac("sha256", API_SECRET)
+      .update(h + "." + p)
+      .digest("base64url");
     if (expected !== s) return null;
     const payload = JSON.parse(Buffer.from(p, "base64url").toString("utf8"));
     if (payload.aud !== API_KEY) return null;
     if (payload.exp && Date.now() / 1000 > payload.exp) return null;
     const shop = (payload.dest || "").replace(/^https?:\/\//, "");
     return validShop(shop) ? shop : null;
-  } catch (e) { return null; }
+  } catch (e) {
+    return null;
+  }
 }
 
 async function tokenExchange(shop, idToken) {
   try {
     const r = await fetch(`https://${shop}/admin/oauth/access_token`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        client_id: API_KEY, client_secret: API_SECRET,
+        client_id: API_KEY,
+        client_secret: API_SECRET,
         grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
         subject_token: idToken,
         subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
-        requested_token_type: "urn:shopify:params:oauth:token-type:offline-access-token",
+        requested_token_type:
+          "urn:shopify:params:oauth:token-type:offline-access-token",
       }),
     }).then((x) => x.json());
     if (!r || !r.access_token) return null;
     await setToken(shop, r.access_token);
     try {
-      await gql(shop, r.access_token,
+      await gql(
+        shop,
+        r.access_token,
         `mutation($u:URL!){ webhookSubscriptionCreate(topic: APP_UNINSTALLED, webhookSubscription:{ callbackUrl:$u, format: JSON }){ userErrors{ message } } }`,
-        { u: HOST + "/webhooks/app_uninstalled" });
+        { u: HOST + "/webhooks/app_uninstalled" },
+      );
     } catch (e) {}
     return r.access_token;
-  } catch (e) { return null; }
+  } catch (e) {
+    return null;
+  }
 }
 
 async function loadStats(shop, token, days) {
-  const since = new Date(Date.now() - (days || 90) * 864e5).toISOString().slice(0, 10);
+  const since = new Date(Date.now() - (days || 90) * 864e5)
+    .toISOString()
+    .slice(0, 10);
   const query = `query($n:Int!,$q:String){ orders(first:$n, reverse:true, query:$q){ edges{ node{ lineItems(first:50){ edges{ node{ title quantity discountedTotalSet{ shopMoney{ amount currencyCode } } originalTotalSet{ shopMoney{ amount currencyCode } } discountAllocations{ allocatedAmountSet{ shopMoney{ amount } } } customAttributes{ key value } } } } } } } }`;
-  const j = await gql(shop, token, query, { n: 100, q: "created_at:>=" + since });
-  if (j.errors) return { error: JSON.stringify(j.errors), pdp: { total: 0, revenue: 0, items: [] }, cart_drawer: { total: 0, revenue: 0, items: [] } };
+  const j = await gql(shop, token, query, {
+    n: 100,
+    q: "created_at:>=" + since,
+  });
+  if (j.errors)
+    return {
+      error: JSON.stringify(j.errors),
+      pdp: { total: 0, revenue: 0, items: [] },
+      cart_drawer: { total: 0, revenue: 0, items: [] },
+    };
   const orders = (j.data && j.data.orders && j.data.orders.edges) || [];
-  const src = { pdp: { items: {}, rev: 0 }, cart_drawer: { items: {}, rev: 0 }, sfy_page: { items: {}, rev: 0 }, sfy_menu: { items: {}, rev: 0 } };
-  let currency = "";
-  orders.forEach((o) => (o.node.lineItems.edges || []).forEach((le) => {
-    const li = le.node; let tag = null;
-    let reco=null,source=null;(li.customAttributes || []).forEach((a) => { if (a.key === "_boko_reco") reco = a.value; if (a.key === "_boko_source") source = a.value; });if(reco==="pdp")tag="pdp";else if(reco==="cart_drawer")tag="cart_drawer";else if(source==="selected-for-you-page")tag="sfy_page";else if(source==="selected-for-you-menu")tag="sfy_menu";
-    if (tag && src[tag]) {
-      const orig = li.originalTotalSet && li.originalTotalSet.shopMoney; const alloc=(li.discountAllocations||[]).reduce(function(x,da){return x+parseFloat((da.allocatedAmountSet&&da.allocatedAmountSet.shopMoney&&da.allocatedAmountSet.shopMoney.amount)||0);},0); const amt=Math.max(0,(orig?parseFloat(orig.amount):0)-alloc);
-      if (orig && orig.currencyCode) currency = orig.currencyCode;
-      const it = src[tag].items[li.title] || { count: 0, rev: 0 };
-      it.count += li.quantity; it.rev += amt; src[tag].items[li.title] = it; src[tag].rev += amt;
-    }
-  }));
-  const pack = (s) => {
-    const items = Object.keys(s.items).map((key) => ({ title: key, count: s.items[key].count, revenue: Math.round(s.items[key].rev * 100) / 100 })).sort((a, b) => b.count - a.count);
-    return { total: items.reduce((x, i) => x + i.count, 0), revenue: Math.round(s.rev * 100) / 100, items };
+  const src = {
+    pdp: { items: {}, rev: 0 },
+    cart_drawer: { items: {}, rev: 0 },
+    sfy_page: { items: {}, rev: 0 },
+    sfy_menu: { items: {}, rev: 0 },
   };
-  const pdp = pack(src.pdp), cd = pack(src.cart_drawer), sfyPage = pack(src.sfy_page), sfyMenu = pack(src.sfy_menu);
-  return { ordersScanned: orders.length, since, currency, totalRevenue: Math.round((pdp.revenue + cd.revenue + sfyPage.revenue + sfyMenu.revenue) * 100) / 100, totalItems: pdp.total + cd.total + sfyPage.total + sfyMenu.total, pdp, cart_drawer: cd, sfy_page: sfyPage, sfy_menu: sfyMenu };
+  let currency = "";
+  orders.forEach((o) =>
+    (o.node.lineItems.edges || []).forEach((le) => {
+      const li = le.node;
+      let tag = null;
+      let reco = null,
+        source = null;
+      (li.customAttributes || []).forEach((a) => {
+        if (a.key === "_boko_reco") reco = a.value;
+        if (a.key === "_boko_source") source = a.value;
+      });
+      if (reco === "pdp") tag = "pdp";
+      else if (reco === "cart_drawer") tag = "cart_drawer";
+      else if (source === "selected-for-you-page") tag = "sfy_page";
+      else if (source === "selected-for-you-menu") tag = "sfy_menu";
+      if (tag && src[tag]) {
+        const orig = li.originalTotalSet && li.originalTotalSet.shopMoney;
+        const alloc = (li.discountAllocations || []).reduce(function (x, da) {
+          return (
+            x +
+            parseFloat(
+              (da.allocatedAmountSet &&
+                da.allocatedAmountSet.shopMoney &&
+                da.allocatedAmountSet.shopMoney.amount) ||
+                0,
+            )
+          );
+        }, 0);
+        const amt =
+          li.discountedTotalSet && li.discountedTotalSet.shopMoney
+            ? parseFloat(li.discountedTotalSet.shopMoney.amount)
+            : Math.max(0, (orig ? parseFloat(orig.amount) : 0) - alloc);
+        if (orig && orig.currencyCode) currency = orig.currencyCode;
+        const it = src[tag].items[li.title] || { count: 0, rev: 0 };
+        it.count += li.quantity;
+        it.rev += amt;
+        src[tag].items[li.title] = it;
+        src[tag].rev += amt;
+      }
+    }),
+  );
+  const pack = (s) => {
+    const items = Object.keys(s.items)
+      .map((key) => ({
+        title: key,
+        count: s.items[key].count,
+        revenue: Math.round(s.items[key].rev * 100) / 100,
+      }))
+      .sort((a, b) => b.count - a.count);
+    return {
+      total: items.reduce((x, i) => x + i.count, 0),
+      revenue: Math.round(s.rev * 100) / 100,
+      items,
+    };
+  };
+  const pdp = pack(src.pdp),
+    cd = pack(src.cart_drawer),
+    sfyPage = pack(src.sfy_page),
+    sfyMenu = pack(src.sfy_menu);
+  return {
+    ordersScanned: orders.length,
+    since,
+    currency,
+    totalRevenue:
+      Math.round(
+        (pdp.revenue + cd.revenue + sfyPage.revenue + sfyMenu.revenue) * 100,
+      ) / 100,
+    totalItems: pdp.total + cd.total + sfyPage.total + sfyMenu.total,
+    pdp,
+    cart_drawer: cd,
+    sfy_page: sfyPage,
+    sfy_menu: sfyMenu,
+  };
 }
 
 app.get("/stats", async (req, res) => {
@@ -248,22 +417,47 @@ app.get("/stats", async (req, res) => {
   try {
     const idToken = (req.headers.authorization || "").replace(/^Bearer /, "");
     const shop = shopFromSessionToken(idToken);
-    if (!shop) return res.status(401).send(JSON.stringify({ error: "unauthorized" }));
+    if (!shop)
+      return res.status(401).send(JSON.stringify({ error: "unauthorized" }));
     let token = await getToken(shop);
     if (!token) token = await tokenExchange(shop, idToken);
-    if (!token) return res.status(200).send(JSON.stringify({ error: "not installed", pdp: { total: 0, revenue: 0, items: [] }, cart_drawer: { total: 0, revenue: 0, items: [] } }));
+    if (!token)
+      return res
+        .status(200)
+        .send(
+          JSON.stringify({
+            error: "not installed",
+            pdp: { total: 0, revenue: 0, items: [] },
+            cart_drawer: { total: 0, revenue: 0, items: [] },
+          }),
+        );
     const days = Math.min(parseInt(req.query.days || "90", 10), 365);
     res.status(200).send(JSON.stringify(await loadStats(shop, token, days)));
   } catch (e) {
-    res.status(200).send(JSON.stringify({ error: e.message, pdp: { total: 0, revenue: 0, items: [] }, cart_drawer: { total: 0, revenue: 0, items: [] } }));
+    res
+      .status(200)
+      .send(
+        JSON.stringify({
+          error: e.message,
+          pdp: { total: 0, revenue: 0, items: [] },
+          cart_drawer: { total: 0, revenue: 0, items: [] },
+        }),
+      );
   }
 });
 
 // storefront beacon — reached via the /apps/reco/track app proxy (proxy forwards /apps/reco/<x> -> /proxy/<x>)
-app.post("/proxy/track", express.json({ type: () => true, limit: "2kb" }), (req, res) => {
-  try { const b = req.body || {}; track(b.event, b.source); } catch (e) {}
-  res.status(204).end();
-});
+app.post(
+  "/proxy/track",
+  express.json({ type: () => true, limit: "2kb" }),
+  (req, res) => {
+    try {
+      const b = req.body || {};
+      track(b.event, b.source);
+    } catch (e) {}
+    res.status(204).end();
+  },
+);
 
 // funnel data for the dashboard
 app.get("/funnel", async (req, res) => {
@@ -271,38 +465,84 @@ app.get("/funnel", async (req, res) => {
   try {
     const idToken = (req.headers.authorization || "").replace(/^Bearer /, "");
     const shop = shopFromSessionToken(idToken);
-    if (!shop) return res.status(401).send(JSON.stringify({ error: "unauthorized" }));
+    if (!shop)
+      return res.status(401).send(JSON.stringify({ error: "unauthorized" }));
     let token = await getToken(shop);
     if (!token) token = await tokenExchange(shop, idToken);
     const days = parseInt(req.query.days, 10) || 90;
     const clicks = funnelCounts(days);
-    const buys = { pdp: { count: 0, rev: 0 }, cart_drawer: { count: 0, rev: 0 }, sfy: { count: 0, rev: 0 } };
+    const buys = {
+      pdp: { count: 0, rev: 0 },
+      cart_drawer: { count: 0, rev: 0 },
+      sfy: { count: 0, rev: 0 },
+    };
     let currency = "";
     if (token) {
       try {
-        const since = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+        const since = new Date(Date.now() - days * 864e5)
+          .toISOString()
+          .slice(0, 10);
         const q = `query($n:Int!,$q:String){ orders(first:$n,reverse:true,query:$q){ edges{ node{ lineItems(first:50){ edges{ node{ quantity discountedTotalSet{ shopMoney{ amount currencyCode } } customAttributes{ key value } } } } } } } }`;
-        const j = await gql(shop, token, q, { n: 100, q: "created_at:>=" + since });
+        const j = await gql(shop, token, q, {
+          n: 100,
+          q: "created_at:>=" + since,
+        });
         const orders = (j.data && j.data.orders && j.data.orders.edges) || [];
-        orders.forEach((o) => (o.node.lineItems.edges || []).forEach((le) => {
-          const li = le.node; let s = null;
-          (li.customAttributes || []).forEach((a) => {
-            if (a.key === "_boko_reco" && (a.value === "pdp" || a.value === "cart_drawer")) s = a.value;
-            if (a.key === "_boko_source" && String(a.value).indexOf("selected-for-you") > -1) s = "sfy";
-          });
-          if (s) {
-            const m = li.discountedTotalSet && li.discountedTotalSet.shopMoney;
-            buys[s].count += li.quantity;
-            buys[s].rev += m ? parseFloat(m.amount) : 0;
-            if (m && m.currencyCode) currency = m.currencyCode;
-          }
-        }));
+        orders.forEach((o) =>
+          (o.node.lineItems.edges || []).forEach((le) => {
+            const li = le.node;
+            let s = null;
+            (li.customAttributes || []).forEach((a) => {
+              if (
+                a.key === "_boko_reco" &&
+                (a.value === "pdp" || a.value === "cart_drawer")
+              )
+                s = a.value;
+              if (
+                a.key === "_boko_source" &&
+                String(a.value).indexOf("selected-for-you") > -1
+              )
+                s = "sfy";
+            });
+            if (s) {
+              const m =
+                li.discountedTotalSet && li.discountedTotalSet.shopMoney;
+              buys[s].count += li.quantity;
+              buys[s].rev += m ? parseFloat(m.amount) : 0;
+              if (m && m.currencyCode) currency = m.currencyCode;
+            }
+          }),
+        );
       } catch (e) {}
     }
-    const pack = (s) => ({ clicks: clicks[s].click, adds: clicks[s].add, purchases: buys[s].count, revenue: Math.round(buys[s].rev * 100) / 100 });
-    res.status(200).send(JSON.stringify({ days, currency, sfy: pack("sfy"), pdp: pack("pdp"), cart_drawer: pack("cart_drawer") }));
+    const pack = (s) => ({
+      clicks: clicks[s].click,
+      adds: clicks[s].add,
+      purchases: buys[s].count,
+      revenue: Math.round(buys[s].rev * 100) / 100,
+    });
+    res
+      .status(200)
+      .send(
+        JSON.stringify({
+          days,
+          currency,
+          sfy: pack("sfy"),
+          pdp: pack("pdp"),
+          cart_drawer: pack("cart_drawer"),
+        }),
+      );
   } catch (e) {
-    res.status(200).send(JSON.stringify({ error: e.message, sfy: { clicks: 0, adds: 0, purchases: 0, revenue: 0 }, pdp: { clicks: 0, adds: 0, purchases: 0, revenue: 0 }, cart_drawer: { clicks: 0, adds: 0, purchases: 0, revenue: 0 } }));
+    res
+      .status(200)
+      .send(
+        JSON.stringify({
+          error: e.message,
+          sfy: { clicks: 0, adds: 0, purchases: 0, revenue: 0 },
+          pdp: { clicks: 0, adds: 0, purchases: 0, revenue: 0 },
+          cart_drawer: { clicks: 0, adds: 0, purchases: 0, revenue: 0 },
+        }),
+      );
   }
 });
 
@@ -451,17 +691,31 @@ document.getElementById("days").addEventListener("change",load); load();
 app.get("/dashboard", (req, res) => {
   const shop = req.query.shop || "";
   const frameShop = validShop(shop) ? shop : "*.myshopify.com";
-  res.set("Content-Security-Policy", "frame-ancestors https://" + frameShop + " https://admin.shopify.com");
-  const ab = '<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js" data-api-key="' + API_KEY + '"></script>';
-  res.set("Content-Type", "text/html").status(200).send(DASHBOARD.replace("__APP_BRIDGE__", ab));
+  res.set(
+    "Content-Security-Policy",
+    "frame-ancestors https://" + frameShop + " https://admin.shopify.com",
+  );
+  const ab =
+    '<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js" data-api-key="' +
+    API_KEY +
+    '"></script>';
+  res
+    .set("Content-Type", "text/html")
+    .status(200)
+    .send(DASHBOARD.replace("__APP_BRIDGE__", ab));
 });
 
 // ---------- Uninstall webhook (HMAC verified) — removes only this shop's token ----------
 app.post("/webhooks/app_uninstalled", (req, res) => {
   const hmac = req.get("X-Shopify-Hmac-Sha256") || "";
-  const digest = crypto.createHmac("sha256", API_SECRET).update(req.body).digest("base64");
+  const digest = crypto
+    .createHmac("sha256", API_SECRET)
+    .update(req.body)
+    .digest("base64");
   let ok = false;
-  try { ok = crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(hmac)); } catch (e) {}
+  try {
+    ok = crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(hmac));
+  } catch (e) {}
   if (!ok) return res.status(401).send("bad hmac");
   const shop = req.get("X-Shopify-Shop-Domain");
   if (validShop(shop)) delToken(shop);
@@ -473,9 +727,13 @@ app.get("/", async (req, res) => {
   const shop = req.query.shop;
   if (validShop(shop)) {
     const token = await getToken(shop);
-    return res.redirect(token ? ("/dashboard?shop=" + shop) : ("/auth?shop=" + shop));
+    return res.redirect(
+      token ? "/dashboard?shop=" + shop : "/auth?shop=" + shop,
+    );
   }
   res.send("Boko AI Recommendations (multi-tenant) is running.");
 });
 
-app.listen(PORT, () => console.log("Boko Reco MULTI-TENANT listening on " + PORT));
+app.listen(PORT, () =>
+  console.log("Boko Reco MULTI-TENANT listening on " + PORT),
+);
