@@ -365,10 +365,7 @@ async function loadStats(shop, token, days) {
             )
           );
         }, 0);
-        const amt =
-          li.discountedTotalSet && li.discountedTotalSet.shopMoney
-            ? parseFloat(li.discountedTotalSet.shopMoney.amount)
-            : Math.max(0, (orig ? parseFloat(orig.amount) : 0) - alloc);
+        const amt = Math.max(0, (orig ? parseFloat(orig.amount) : 0) - alloc);
         if (orig && orig.currencyCode) currency = orig.currencyCode;
         const it = src[tag].items[li.title] || { count: 0, rev: 0 };
         it.count += li.quantity;
