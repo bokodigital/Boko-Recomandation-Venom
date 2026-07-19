@@ -320,19 +320,17 @@ async function loadStats(shop, token, days) {
     .toISOString()
     .slice(0, 10);
   const query = `query($n:Int!,$q:String){ orders(first:$n, reverse:true, query:$q){ edges{ node{ lineItems(first:50){ edges{ node{ title quantity discountedTotalSet{ shopMoney{ amount currencyCode } } originalTotalSet{ shopMoney{ amount currencyCode } } discountAllocations{ allocatedAmountSet{ shopMoney{ amount } } } customAttributes{ key value } } } } } } } }`;
-  const PQ = "query($n:Int!,$q:String,$after:String){ orders(first:$n, reverse:true, query:$q, after:$after){ pageInfo{ hasNextPage endCursor } edges{ node{ lineItems(first:50){ edges{ node{ title quantity discountedTotalSet{ shopMoney{ amount currencyCode } } originalTotalSet{ shopMoney{ amount currencyCode } } discountAllocations{ allocatedAmountSet{ shopMoney{ amount currencyCode } } } customAttributes{ key value } } } } } } } }";
-  let orders = [];
-  { let after = null, pages = 0;
-    while (true) {
-      const j = await gql(shop, token, PQ, { n: 250, q: "created_at:>=" + since, after });
-      if (j.errors)
-        return { error: JSON.stringify(j.errors), pdp: { total: 0, revenue: 0, items: [] }, cart_drawer: { total: 0, revenue: 0, items: [] } };
-      const conn = j.data && j.data.orders;
-      orders = orders.concat((conn && conn.edges) || []);
-      const pi = conn && conn.pageInfo;
-      if (!pi || !pi.hasNextPage || ++pages >= 60) break;
-      after = pi.endCursor;
-    } }
+  const j = await gql(shop, token, query, {
+    n: 100,
+    q: "created_at:>=" + since,
+  });
+  if (j.errors)
+    return {
+      error: JSON.stringify(j.errors),
+      pdp: { total: 0, revenue: 0, items: [] },
+      cart_drawer: { total: 0, revenue: 0, items: [] },
+    };
+  const orders = (j.data && j.data.orders && j.data.orders.edges) || [];
   const src = {
     pdp: { items: {}, rev: 0 },
     cart_drawer: { items: {}, rev: 0 },
