@@ -5,8 +5,6 @@
 import fs from "fs";
 import path from "path";
 
-import Database from "@replit/database";
-const _bdb = new Database();
 const KEY = "boko_track";
 const FILE = path.join(process.cwd(), "boko-track.json"); // fallback only
 
@@ -19,13 +17,39 @@ function dbBase() {
 }
 
 async function dbGet() {
-  const r = await _bdb.get(KEY);
-  const v = (r && typeof r === "object" && "ok" in r) ? (r.ok ? r.value : null) : r;
-  return v || {};
+  const base = dbBase();
+  if (base) {
+    const res = await fetch(base + "/" + encodeURIComponent(KEY));
+    if (res.status === 404) return {};
+    if (!res.ok) throw new Error("db get " + res.status);
+    const txt = await res.text();
+    return txt ? JSON.parse(txt) : {};
+  }
+  try {
+    return JSON.parse(fs.readFileSync(FILE, "utf8")) || {};
+  } catch (e) {
+    return {};
+  }
 }
 
 async function dbSet(obj) {
-  await _bdb.set(KEY, obj);
+  const base = dbBase();
+  if (base) {
+    try {
+      await fetch(base, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body:
+          encodeURIComponent(KEY) +
+          "=" +
+          encodeURIComponent(JSON.stringify(obj)),
+      });
+      return;
+    } catch (e) {}
+  }
+  try {
+    fs.writeFileSync(FILE, JSON.stringify(obj));
+  } catch (e) {}
 }
 
 async function load() {
