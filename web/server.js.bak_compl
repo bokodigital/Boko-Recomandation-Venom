@@ -19,7 +19,7 @@
 import express from "express";
 import crypto from "crypto";
 import Database from "@replit/database";
-import { recommend } from "./recommendations.js"; import { bokoComplementaryPool } from "./boko-complement.js";
+import { recommend } from "./recommendations.js";
 import { track, funnelCounts } from "./boko-tracker.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -257,7 +257,7 @@ app.get("/proxy/recommend", async (req, res) => {
           }
         : null);
     if (anum) products = products.filter((p) => !p.id.endsWith(anum));
-    let items; if (anchor && anchor.category) { const _cp = bokoComplementaryPool(products, anchor.category, anum); if (_cp.length) items = await recommend({ products: _cp, anchor: null, limit }); } if (!items || !items.length) { items = await recommend({ products, anchor, limit }); }
+    const items = await recommend({ products, anchor, limit });
     res.status(200).send(JSON.stringify({ items }));
   } catch (e) {
     res.status(200).send(JSON.stringify({ items: [], error: e.message }));
