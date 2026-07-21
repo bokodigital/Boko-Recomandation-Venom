@@ -72,6 +72,12 @@
 #boko-reco-{{ block.id }} .boko-reco__sw:hover{border-color:var(--ink)}
 #boko-reco-{{ block.id }} .boko-reco__sw.is-sel{background:#1f1f1f;color:#fff;border-color:#1f1f1f}
 #boko-reco-{{ block.id }} .boko-reco__sw.is-oos{opacity:.4;text-decoration:line-through;cursor:not-allowed}
+#boko-reco-{{ block.id }} .boko-reco__nav{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:18px}
+#boko-reco-{{ block.id }} .boko-reco__nav-btn{width:38px;height:38px;border:1px solid var(--line);background:#fff;border-radius:50%;cursor:pointer;font-size:22px;line-height:1;color:var(--ink);display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;transition:border-color .15s}
+#boko-reco-{{ block.id }} .boko-reco__nav-btn:hover{border-color:var(--ink)}
+#boko-reco-{{ block.id }} .boko-reco__dots{display:flex;gap:7px;align-items:center}
+#boko-reco-{{ block.id }} .boko-reco__nav-dot{width:8px;height:8px;border-radius:50%;background:var(--line);border:none;padding:0;cursor:pointer;transition:background .2s}
+#boko-reco-{{ block.id }} .boko-reco__nav-dot.on{background:var(--ink)}
 </style>
 <div id="boko-reco-{{ block.id }}" class="boko-reco" data-boko-reco
   data-proxy="{{ block.settings.proxy_url }}"
@@ -148,9 +154,33 @@
       return c;
     }
     function load(){
-      grid.style.gridTemplateColumns="repeat("+perRow+",minmax(0,1fr))";
+      var COLS=Math.min(perRow,4);
+      grid.style.gridTemplateColumns="repeat("+COLS+",minmax(0,1fr))";
       grid.innerHTML="<div class='boko-reco__loading'>Loading…</div>";
-      getItems().then(function(items){grid.innerHTML="";if(!items.length){grid.innerHTML="<div class='boko-reco__loading'>No recommendations yet.</div>";return;}items.forEach(function(p){if(p.variantId)grid.appendChild(card(p));});});
+      getItems().then(function(items){
+        grid.innerHTML="";
+        items=items.filter(function(p){return !!p.variantId;});
+        if(!items.length){grid.innerHTML="<div class='boko-reco__loading'>No recommendations yet.</div>";return;}
+        var pages=[]; for(var i=0;i<items.length;i+=COLS)pages.push(items.slice(i,i+COLS));
+        var page=0;
+        var nav=root.querySelector("[data-reco-nav]");
+        if(!nav){
+          nav=el("<div class='boko-reco__nav' data-reco-nav><button class='boko-reco__nav-btn' data-prev>&#8249;</button><div class='boko-reco__dots' data-dots></div><button class='boko-reco__nav-btn' data-next>&#8250;</button></div>");
+          grid.parentNode.insertBefore(nav,grid.nextSibling);
+          nav.querySelector("[data-prev]").addEventListener("click",function(){showPage(page-1);});
+          nav.querySelector("[data-next]").addEventListener("click",function(){showPage(page+1);});
+        }
+        function showPage(p){
+          page=(p+pages.length)%pages.length;
+          grid.innerHTML="";
+          pages[page].forEach(function(item){grid.appendChild(card(item));});
+          var dotsEl=nav.querySelector("[data-dots]");
+          dotsEl.innerHTML=pages.map(function(_,k){return "<button class='boko-reco__nav-dot"+(k===page?" on":"")+"' data-p='"+k+"'></button>";}).join("");
+          dotsEl.querySelectorAll("[data-p]").forEach(function(d){d.addEventListener("click",function(){showPage(+d.dataset.p);});});
+          nav.style.display=pages.length>1?"flex":"none";
+        }
+        showPage(0);
+      });
     }
     function addToCart(variantId,btn){if(btn)btn.disabled=true;var body={items:[{id:Number(vnum(variantId)),quantity:1,properties:{"_boko_reco":"pdp"}}]};var sec=getSections();if(sec){body.sections=sec;body.sections_url=location.pathname;}fetch("/cart/add.js",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){if(!r.ok)return r.json().then(function(e){throw e;});return r.json();}).then(function(json){if(btn){btn.textContent="Added ✓";btn.classList.add("is-added");setTimeout(function(){btn.textContent="Add to cart";btn.classList.remove("is-added");btn.disabled=false;},1600);}showCart(json);}).catch(function(e){if(btn){btn.textContent="Unavailable";setTimeout(function(){btn.textContent="Add to cart";btn.disabled=false;},1600);}console.warn("[boko] add-to-cart failed",e);});}
     function ensureBar(){if(bar)return bar;bar=el("<div class='boko-reco__bar'><div class='boko-reco__bthumbs' data-bt></div><div class='boko-reco__btext'><b data-bc>0 items</b><span data-bs></span></div><div class='boko-reco__bspacer'></div><div class='boko-reco__btotal'><small data-bcomp></small><span data-btt>$0.00</span></div><button class='boko-reco__bclear' data-bclear>Clear</button><button class='boko-reco__badd' data-badd>Add bundle to cart</button></div>");root.appendChild(bar);bar.querySelector("[data-bclear]").addEventListener("click",function(){bundle=[];ITEMS={};renderBundle();load();});bar.querySelector("[data-badd]").addEventListener("click",addBundle);return bar;}
@@ -178,9 +208,9 @@
     {
       "type": "range",
       "id": "per_row",
-      "label": "Products per row",
+      "label": "Columns per page (max 4)",
       "min": 2,
-      "max": 6,
+      "max": 4,
       "step": 1,
       "default": 4
     },
