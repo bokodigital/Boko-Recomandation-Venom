@@ -154,7 +154,7 @@
       return c;
     }
     function load(){
-      var COLS=Math.min(perRow,8);
+      var COLS=Math.min(perRow,4);
       grid.style.gridTemplateColumns="repeat("+COLS+",minmax(0,1fr))";
       grid.innerHTML="<div class='boko-reco__loading'>Loading…</div>";
       getItems().then(function(items){
@@ -208,9 +208,9 @@
     {
       "type": "range",
       "id": "per_row",
-      "label": "Columns per page (max 8)",
+      "label": "Columns per page (max 4)",
       "min": 2,
-      "max": 8,
+      "max": 4,
       "step": 1,
       "default": 4
     },

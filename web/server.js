@@ -477,12 +477,18 @@ app.get("/funnel", async (req, res) => {
         const since = new Date(Date.now() - days * 864e5)
           .toISOString()
           .slice(0, 10);
-        const q = `query($n:Int!,$q:String){ orders(first:$n,reverse:true,query:$q){ edges{ node{ lineItems(first:50){ edges{ node{ quantity originalTotalSet{ shopMoney{ amount currencyCode } } discountAllocations{ allocatedAmountSet{ shopMoney{ amount } } } customAttributes{ key value } } } } } } } }`;
-        const j = await gql(shop, token, q, {
-          n: 100,
-          q: "created_at:>=" + since,
-        });
-        const orders = (j.data && j.data.orders && j.data.orders.edges) || [];
+        const PQ = `query($n:Int!,$q:String,$after:String){ orders(first:$n,reverse:true,query:$q,after:$after){ pageInfo{ hasNextPage endCursor } edges{ node{ lineItems(first:50){ edges{ node{ quantity originalTotalSet{ shopMoney{ amount currencyCode } } discountAllocations{ allocatedAmountSet{ shopMoney{ amount } } } customAttributes{ key value } } } } } } } }`;
+        let orders = [];
+        { let after = null, pages = 0;
+          while (true) {
+            const j = await gql(shop, token, PQ, { n: 250, q: "created_at:>=" + since, after });
+            if (j.errors) break;
+            const conn = j.data && j.data.orders;
+            orders = orders.concat((conn && conn.edges) || []);
+            const pi = conn && conn.pageInfo;
+            if (!pi || !pi.hasNextPage || ++pages >= 60) break;
+            after = pi.endCursor;
+          } }
         orders.forEach((o) =>
           (o.node.lineItems.edges || []).forEach((le) => {
             const li = le.node;
