@@ -238,6 +238,7 @@ app.get("/proxy/recommend", async (req, res) => {
           JSON.stringify({ items: [], error: "app not installed for shop" }),
         );
     const limit = Math.min(parseInt(req.query.limit || "8", 10), 24);
+    let days = parseInt(req.query.days, 10); if (!Number.isFinite(days)) days = 90; days = Math.max(0, Math.min(days, 3650));
     const atype = (req.query.atype || "").trim();
     const anum = (req.query.anchor || "").trim();
     let products = await loadProducts(shop, token, 250);
@@ -257,7 +258,7 @@ app.get("/proxy/recommend", async (req, res) => {
           }
         : null);
     if (anum) products = products.filter((p) => !p.id.endsWith(anum));
-    let items; if (anchor && anchor.category) { const _cp = bokoComplementaryPool(products, anchor.category, anum); if (_cp.length) items = await recommend({ products: _cp, anchor: null, limit }); } if (!items || !items.length) { items = await recommend({ products, anchor, limit }); }
+    let items; if (anchor && anchor.category) { const _cp = bokoComplementaryPool(products, anchor.category, anum, days); if (_cp.length) items = await recommend({ products: _cp, anchor: null, limit, days }); } if (!items || !items.length) { items = await recommend({ products, anchor, limit, days }); }
     res.status(200).send(JSON.stringify({ items }));
   } catch (e) {
     res.status(200).send(JSON.stringify({ items: [], error: e.message }));

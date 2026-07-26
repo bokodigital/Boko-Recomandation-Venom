@@ -133,8 +133,8 @@ async function refineWithLLM({ candidates, anchor }) {
   }
 }
 
-async function recommend({ products, anchor = null, limit = 8, useLLM = true }) {
-  const NINETY = 90 * 24 * 60 * 60 * 1000;
+async function recommend({ products, anchor = null, limit = 8, useLLM = true, days = 90 }) {
+  const NINETY = (Number(days) > 0 ? Number(days) : 36500) * 24 * 60 * 60 * 1000;
   const now = Date.now();
   const getPub = (p) => p.publishedAt || p.published_at || p.createdAt || p.published_date || null;
   const isRecent = (p) => {
