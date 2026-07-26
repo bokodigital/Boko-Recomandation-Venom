@@ -195,11 +195,13 @@ async function loadProducts(shop, token, limit = 100, productType = "") {
         (ce) => (ce.node.handle || "").toLowerCase(),
       );
       const tags = (n.tags || []).map((t) => String(t).toLowerCase());
+      // Exclude ONLY gift cards — not products merely tagged "Gift"/"Gifts"
+      // (accessories/jewellery are often gift-tagged and were being wrongly dropped).
       const isGift =
         n.isGiftCard === true ||
-        (n.productType || "").toLowerCase().includes("gift") ||
-        tags.some((t) => t.includes("gift")) ||
-        collHandles.some((h) => h.includes("gift"));
+        /gift\s*cards?/.test((n.productType || "").toLowerCase()) ||
+        tags.some((t) => /gift\s*cards?/.test(t)) ||
+        collHandles.some((h) => /gift-?cards?/.test(h));
       if (isGift) return null;
       return {
         id: n.id,
