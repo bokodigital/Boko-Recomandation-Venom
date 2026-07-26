@@ -182,12 +182,23 @@ async function recommend({ products, anchor = null, limit = 8, useLLM = true, da
   }
   ordered = ordered.slice(0, limit);
 
-  if (ordered.length < limit && olderProducts.length) {
+  // Hard "last X days" window: backfill ONLY from within-window products, never
+  // from older-than-window items. So a small window (e.g. 1 day) shows fewer
+  // items rather than silently padding the rail with old products.
+  // (When days is 0/blank the window is ~100yr, so every product counts as
+  // "recent" and this still fills the rail from the full catalogue.)
+  void olderProducts; // intentionally NOT used for backfill anymore
+  if (ordered.length < limit) {
     const used = new Set(ordered.map((p) => p.id));
     if (anchor) used.add(anchor.id);
-    for (const p of olderProducts) {
+    const withinRest = recentProducts
+      .filter((p) => !used.has(p.id))
+      .sort((a, b) => {
+        const pa = getPub(a), pb = getPub(b);
+        return (pb ? new Date(pb).getTime() : 0) - (pa ? new Date(pa).getTime() : 0);
+      });
+    for (const p of withinRest) {
       if (ordered.length >= limit) break;
-      if (used.has(p.id)) continue;
       ordered.push(p);
       used.add(p.id);
     }
