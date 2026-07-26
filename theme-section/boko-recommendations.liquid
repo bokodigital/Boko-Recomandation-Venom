@@ -43,6 +43,7 @@
   data-proxy="{{ section.settings.proxy_url }}"
   data-per-row="{{ section.settings.per_row }}"
   data-limit="{{ section.settings.limit }}"
+  data-days="{{ section.settings.days }}"
   data-bundle-discount="{{ section.settings.bundle_discount }}"
   {% if template contains 'product' %}data-anchor="{{ product.id }}"{% endif %}>
   <h2 class="boko-reco__title">{{ section.settings.title }}</h2>
@@ -57,13 +58,14 @@
     var proxy=root.getAttribute("data-proxy")||"/apps/reco/recommend";
     var perRow=parseInt(root.getAttribute("data-per-row")||"4",10);
     var limit=parseInt(root.getAttribute("data-limit")||"8",10);
+    var days=root.getAttribute("data-days")||"";
     var discount=parseFloat(root.getAttribute("data-bundle-discount")||"0");
     var anchor=root.getAttribute("data-anchor")||"";
     var grid=root.querySelector("[data-reco-grid]");
     var bundle=[],ITEMS={},bar;
     function money(n){return "$"+Number(n).toFixed(2);}
     function getItems(){
-      var url=proxy+"?type=recommended&limit="+limit+(anchor?"&anchor="+encodeURIComponent(anchor):"");
+      var url=proxy+"?type=recommended&limit="+limit+(anchor?"&anchor="+encodeURIComponent(anchor):"")+(days?"&days="+encodeURIComponent(days):"");
       return fetch(url,{headers:{Accept:"application/json"}}).then(function(r){return r.json();}).then(function(d){return d.items||[];}).catch(function(){return [];});
     }
     function card(p){
@@ -95,6 +97,7 @@
   "name": "AI Recommendations",
   "settings": [
     { "type": "text", "id": "title", "label": "Heading", "default": "You may also like" },
+    { "type": "text", "id": "days", "label": "Show products from (last X days)", "default": "90", "info": "Only show products published in the last X days. Use 0 for all products." },
     { "type": "range", "id": "per_row", "label": "Products per row", "min": 2, "max": 6, "step": 1, "default": 4 },
     { "type": "range", "id": "limit", "label": "Number of products", "min": 2, "max": 24, "step": 1, "default": 8 },
     { "type": "range", "id": "bundle_discount", "label": "Bundle discount %", "min": 0, "max": 50, "step": 1, "default": 10 },
