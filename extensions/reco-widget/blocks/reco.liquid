@@ -83,6 +83,7 @@
   data-proxy="{{ block.settings.proxy_url }}"
   data-per-row="{{ block.settings.per_row }}"
   data-limit="{{ block.settings.limit }}"
+  data-days="{{ block.settings.days }}"
   data-bundle-discount="{{ block.settings.bundle_discount }}"
   {% if template contains 'product' %}data-anchor="{{ product.id }}" data-anchor-type="{{ product.type | escape }}" data-anchor-title="{{ product.title | escape }}" data-anchor-tags="{{ product.tags | join: ',' | escape }}" data-anchor-price="{{ product.price | divided_by: 100.0 }}"{% endif %}>
   <h2 class="boko-reco__title">{{ block.settings.title }}</h2>
@@ -96,6 +97,7 @@
     var proxy=root.getAttribute("data-proxy")||"/apps/reco/recommend";
     var perRow=parseInt(root.getAttribute("data-per-row")||"4",10);
     var limit=parseInt(root.getAttribute("data-limit")||"8",10);
+    var days=root.getAttribute("data-days")||"";
     var discount=parseFloat(root.getAttribute("data-bundle-discount")||"0");
     var anchor=root.getAttribute("data-anchor")||"";
     var aType=root.getAttribute("data-anchor-type")||"";
@@ -111,7 +113,7 @@
     function getSections(){var cd=document.querySelector("cart-drawer");return (cd&&cd.getSectionsToRender)?cd.getSectionsToRender().map(function(s){return s.id;}):null;}
     function showCart(json){var cd=document.querySelector("cart-drawer");if(cd&&typeof cd.renderContents==="function"&&json&&json.sections&&json.sections["cart-drawer"]){try{cd.renderContents(json);cd.classList.remove("is-empty");var inner=document.querySelector("#CartDrawer");if(inner)inner.classList.remove("is-empty");return;}catch(e){}}refreshCart();}
     function getItems(){
-      var url=proxy+"?type=recommended&limit="+limit+(anchor?"&anchor="+encodeURIComponent(anchor):"")+(aType?"&atype="+encodeURIComponent(aType):"")+(aTitle?"&atitle="+encodeURIComponent(aTitle):"")+(aTags?"&atags="+encodeURIComponent(aTags):"")+(aPrice?"&aprice="+encodeURIComponent(aPrice):"");
+      var url=proxy+"?type=recommended&limit="+limit+(anchor?"&anchor="+encodeURIComponent(anchor):"")+(aType?"&atype="+encodeURIComponent(aType):"")+(aTitle?"&atitle="+encodeURIComponent(aTitle):"")+(aTags?"&atags="+encodeURIComponent(aTags):"")+(aPrice?"&aprice="+encodeURIComponent(aPrice):"")+(days?"&days="+encodeURIComponent(days):"");
       return fetch(url,{headers:{Accept:"application/json"}}).then(function(r){return r.json();}).then(function(d){return d.items||[];}).catch(function(){return [];});
     }
     function variantFor(p,sel){for(var i=0;i<p.variants.length;i++){var v=p.variants[i],ok=true;for(var k=0;k<sel.length;k++){if(sel[k]!=null&&v.options[k]!==sel[k]){ok=false;break;}}if(ok)return v;}return null;}
@@ -204,6 +206,13 @@
       "id": "title",
       "label": "Heading",
       "default": "You may also like"
+    },
+    {
+      "type": "text",
+      "id": "days",
+      "label": "Show products from (last X days)",
+      "default": "90",
+      "info": "Only show products published in the last X days. Use 0 for all products."
     },
     {
       "type": "range",
