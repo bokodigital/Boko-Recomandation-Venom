@@ -584,7 +584,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted
 .empty{color:var(--muted);font-size:13px;padding:14px 0}.err{background:#fdeceb;border:1px solid #f6cdc8;color:#7a1d13;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:16px}
 .foot{color:var(--muted);font-size:12px;margin-top:20px;text-align:center}
 </style></head><body><div class="wrap">
-<h1>Boko AI Recommendations — Performance</h1>
+<h1>AI Product Recommendations — Performance</h1>
 <p class="sub">Items and revenue from products added via your recommendation widgets.</p>
 <style>
   .how-to{border:1px solid #e3e3e3;border-radius:12px;background:#fff;margin:0 0 20px;overflow:hidden}
