@@ -21,6 +21,7 @@ import crypto from "crypto";
 import Database from "@replit/database";
 import { recommend } from "./recommendations.js"; import { bokoComplementaryPool } from "./boko-complement.js";
 import { track, funnelCounts } from "./boko-tracker.js";
+import { mountIndustry, industryCardHtml, industryScript } from "./boko-industry.js"; // BOKO INDUSTRY MODULE (self-contained; safe to remove)
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const API_KEY = process.env.SHOPIFY_API_KEY || "";
@@ -604,6 +605,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted
   <div class="how-to__body"><p>AI Recommendations shows your shoppers products they&rsquo;re likely to love, picked automatically by AI. They appear in three places: the <strong>product page</strong>, the <strong>cart</strong>, and a full <strong>&ldquo;Selected for you&rdquo; page</strong>. Shoppers pick a size or colour and add to cart right there, and on the product page they can tick a few items and add them together as a bundle for a discount.</p><h4>1. Turn the app on</h4><ol><li>Open the app from your <strong>Apps</strong> list and start the free trial. Once it&rsquo;s active, recommendations are ready to show.</li></ol><h4>2. Add it to your product pages</h4><ol><li>Go to <strong>Online Store &rarr; Themes &rarr; Customize</strong>.</li><li>At the top, switch to a <strong>Product</strong> page.</li><li>Click <strong>Add block</strong>, choose <strong>AI Recommendations</strong>, drag it where you want it, and <strong>Save</strong>.</li></ol><h4>3. Turn it on in the cart</h4><ol><li>Still in <strong>Customize</strong>, open <strong>App embeds</strong> (the puzzle-piece icon).</li><li>Switch on the <strong>Boko cart-drawer</strong> option and <strong>Save</strong>.</li></ol><h4>4. Add the &ldquo;Selected for you&rdquo; page (optional)</h4><ol><li>Go to <strong>Online Store &rarr; Pages</strong> and create a new page.</li><li>In the <strong>Theme template</strong> dropdown, choose the <strong>&ldquo;Selected for you&rdquo;</strong> template, then <strong>Save</strong>.</li></ol><h4>5. Watch it work</h4><ol><li>Come back to this dashboard any time to see clicks, add-to-carts, purchases and revenue from each place.</li></ol><p class="muted">That&rsquo;s it &mdash; no coding, no setup files. Need help? Contact Boko at admin@boko.com.au.</p>
   </div>
 </details>
+__BOKO_INDUSTRY_CARD__
 <div class="row"><label class="sub" style="margin:0">Period</label>
 <select id="days"><option value="30">Last 30 days</option><option value="90" selected>Last 90 days</option><option value="365">Last 12 months</option></select>
 <span id="meta" class="sub" style="margin:0 0 0 auto"></span></div>
@@ -702,6 +704,7 @@ function load(){
   bkFunnel(days);
 }
 document.getElementById("days").addEventListener("change",load); load();
+__BOKO_INDUSTRY_SCRIPT__
 </script></body></html>`;
 
 app.get("/dashboard", (req, res) => {
@@ -718,7 +721,17 @@ app.get("/dashboard", (req, res) => {
   res
     .set("Content-Type", "text/html")
     .status(200)
-    .send(DASHBOARD.replace("__APP_BRIDGE__", ab));
+    .send(
+      DASHBOARD.replace("__APP_BRIDGE__", ab)
+        .replace("__BOKO_INDUSTRY_CARD__", industryCardHtml()) // BOKO INDUSTRY MODULE
+        .replace("__BOKO_INDUSTRY_SCRIPT__", industryScript()), // BOKO INDUSTRY MODULE
+    );
+});
+
+// BOKO INDUSTRY MODULE — register /settings/industry routes (self-contained; safe to remove)
+mountIndustry(app, {
+  shopFromToken: shopFromSessionToken,
+  expressJson: express.json({ type: () => true, limit: "4kb" }),
 });
 
 // ---------- Uninstall webhook (HMAC verified) — removes only this shop's token ----------
