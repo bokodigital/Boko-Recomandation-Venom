@@ -31,6 +31,13 @@ function db() {
   return _idb || null;
 }
 
+// ── Show / hide the dashboard UI ────────────────────────────────────────────
+// Set to false to HIDE the "Store category" card + dropdown from the dashboard
+// while we finalise how the category drives recommendations. All backend code,
+// routes and stored values stay intact — flip this back to `true` to show it
+// again instantly (no re-wiring, no redeploy of anything else needed).
+const SHOW_INDUSTRY_UI = false;
+
 const KEY = (shop) => "boko_industry:" + String(shop || "").toLowerCase();
 
 // The selectable categories. Add/remove here — the dropdown and validation follow.
@@ -71,6 +78,7 @@ export async function getStoreIndustry(shop) {
 
 // ── Dashboard UI (returned as strings so the whole feature lives in this file) ──
 export function industryCardHtml() {
+  if (!SHOW_INDUSTRY_UI) return ""; // hidden until the recommendation logic is finalised
   const opts =
     '<option value="">Select category…</option>' +
     INDUSTRIES.map((i) => '<option value="' + i + '">' + i + "</option>").join("");
@@ -86,6 +94,7 @@ export function industryCardHtml() {
 
 // Runs inside the dashboard page scope (can reuse the page's window.shopify App Bridge).
 export function industryScript() {
+  if (!SHOW_INDUSTRY_UI) return ""; // hidden until the recommendation logic is finalised
   return [
     "(function(){",
     "  var sel=document.getElementById('bkIndustrySel'), saved=document.getElementById('bkIndustrySaved');",
