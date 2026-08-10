@@ -65,8 +65,8 @@ const BACKFILL_DAYS = 90; // history pulled on first load
 const MIN_ORDERS = 30; // don't headline a lift below this sample
 
 const sh = (shop) => String(shop || "").toLowerCase();
-const dayKey = (shop, date) => "boko_daily:" + sh(shop) + ":" + date;
-const metaKey = (shop) => "boko_impact_meta:" + sh(shop);
+const dayKey = (shop, date) => "boko_daily_v2:" + sh(shop) + ":" + date;
+const metaKey = (shop) => "boko_impact_meta_v2:" + sh(shop);
 const cfgKey = (shop) => "boko_impact_cfg:" + sh(shop);
 // Normalise order id so a webhook's REST id ("1001") and Admin GraphQL's
 // gid ("gid://shopify/Order/1001") dedupe to the SAME key — prevents backfill
@@ -75,7 +75,7 @@ const normId = (id) => {
   const m = String(id == null ? "" : id).match(/(\d+)(?!.*\d)/);
   return m ? m[1] : String(id);
 };
-const oidKey = (shop, id) => "boko_oid:" + sh(shop) + ":" + normId(id);
+const oidKey = (shop, id) => "boko_oid_v2:" + sh(shop) + ":" + normId(id);
 
 // UTC date (YYYY-MM-DD). NB: aggregates by UTC day — fine for lift %, note in docs if a shop wants local-day buckets.
 function isoDay(d) {
@@ -91,7 +91,7 @@ function num(v) {
 function isAttributedLine(props) {
   const arr = Array.isArray(props) ? props : [];
   return arr.some(
-    (p) => p && /^_boko_(reco|bundle)$/.test(String(p.name || p.key || "")),
+    (p) => p && /^_boko_reco$/.test(String(p.name || p.key || "")),
   );
 }
 // Parse a webhook (REST/JSON) order → {id, date, revenue, attributed, influenced}
