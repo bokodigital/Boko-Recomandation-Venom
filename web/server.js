@@ -726,10 +726,10 @@ app.get("/dashboard", (req, res) => {
     .status(200)
     .send(
       DASHBOARD.replace("__APP_BRIDGE__", ab)
-        .replace("__BOKO_INDUSTRY_CARD__", industryCardHtml()) // BOKO INDUSTRY MODULE
-        .replace("__BOKO_INDUSTRY_SCRIPT__", industryScript()) // BOKO INDUSTRY MODULE
-        .replace("__BOKO_IMPACT_CARD__", impactCardHtml()) // BOKO IMPACT MODULE
-        .replace("__BOKO_IMPACT_SCRIPT__", impactScript()), // BOKO IMPACT MODULE
+        .replace("__BOKO_INDUSTRY_CARD__", ()=>industryCardHtml()) // BOKO INDUSTRY MODULE
+        .replace("__BOKO_INDUSTRY_SCRIPT__", ()=>industryScript()) // BOKO INDUSTRY MODULE
+        .replace("__BOKO_IMPACT_CARD__", ()=>impactCardHtml()) // BOKO IMPACT MODULE
+        .replace("__BOKO_IMPACT_SCRIPT__", ()=>impactScript()), // BOKO IMPACT MODULE
     );
 });
 
