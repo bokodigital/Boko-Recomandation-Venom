@@ -22,6 +22,7 @@ import Database from "@replit/database";
 import { recommend } from "./recommendations.js"; import { bokoComplementaryPool } from "./boko-complement.js";
 import { track, funnelCounts } from "./boko-tracker.js";
 import { mountIndustry, industryCardHtml, industryScript } from "./boko-industry.js"; // BOKO INDUSTRY MODULE (self-contained; safe to remove)
+import { mountImpact, impactCardHtml, impactScript } from "./boko-impact.js"; // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const API_KEY = process.env.SHOPIFY_API_KEY || "";
@@ -606,6 +607,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted
   </div>
 </details>
 __BOKO_INDUSTRY_CARD__
+__BOKO_IMPACT_CARD__
 <div class="row"><label class="sub" style="margin:0">Period</label>
 <select id="days"><option value="30">Last 30 days</option><option value="90" selected>Last 90 days</option><option value="365">Last 12 months</option></select>
 <span id="meta" class="sub" style="margin:0 0 0 auto"></span></div>
@@ -705,6 +707,7 @@ function load(){
 }
 document.getElementById("days").addEventListener("change",load); load();
 __BOKO_INDUSTRY_SCRIPT__
+__BOKO_IMPACT_SCRIPT__
 </script></body></html>`;
 
 app.get("/dashboard", (req, res) => {
@@ -724,7 +727,9 @@ app.get("/dashboard", (req, res) => {
     .send(
       DASHBOARD.replace("__APP_BRIDGE__", ab)
         .replace("__BOKO_INDUSTRY_CARD__", industryCardHtml()) // BOKO INDUSTRY MODULE
-        .replace("__BOKO_INDUSTRY_SCRIPT__", industryScript()), // BOKO INDUSTRY MODULE
+        .replace("__BOKO_INDUSTRY_SCRIPT__", industryScript()) // BOKO INDUSTRY MODULE
+        .replace("__BOKO_IMPACT_CARD__", impactCardHtml()) // BOKO IMPACT MODULE
+        .replace("__BOKO_IMPACT_SCRIPT__", impactScript()), // BOKO IMPACT MODULE
     );
 });
 
@@ -732,6 +737,17 @@ app.get("/dashboard", (req, res) => {
 mountIndustry(app, {
   shopFromToken: shopFromSessionToken,
   expressJson: express.json({ type: () => true, limit: "4kb" }),
+});
+
+// BOKO IMPACT MODULE — Phase 1 AOV lift: /impact, /impact/backfill, /webhooks/orders_create (self-contained; safe to remove)
+mountImpact(app, {
+  shopFromToken: shopFromSessionToken,
+  getToken,
+  tokenExchange,
+  gql,
+  apiSecret: API_SECRET,
+  host: HOST,
+  api: API,
 });
 
 // ---------- Uninstall webhook (HMAC verified) — removes only this shop's token ----------
