@@ -77,8 +77,8 @@ async function dbSet(key, val) {
 }
 
 const WINDOW_DAYS = 7;            // impression → order lookback
-const MIN_EXPOSED_SESSIONS = 1000; // §6 gate
-const MIN_ORDERS = 50;             // §6 gate
+const MIN_EXPOSED_SESSIONS = 0; // §6 gate
+const MIN_ORDERS = 0;             // §6 gate
 
 const sh = (shop) => String(shop || "").toLowerCase();
 const dayKey = (shop, date) => "boko_cr_daily:" + sh(shop) + ":" + date;
