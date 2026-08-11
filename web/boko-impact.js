@@ -184,6 +184,72 @@ async function ensureWebhook(shop, token, deps, meta) {
   return m;
 }
 
+// ── LIVE compute: scan Shopify orders for the range and build the payload ──
+// Same query, attribution and price math as backfillChunk/loadStats.
+async function computeImpactLive(shop, token, deps, rangeDays) {
+  const cfg = (await dbGet(cfgKey(shop))) || {};
+  const k = typeof cfg.k === "number" ? cfg.k : DEFAULT_K;
+  const since = new Date(Date.now() - rangeDays * 864e5).toISOString();
+  const q = `query($q:String!,$after:String){ orders(first:100, query:$q, sortKey:CREATED_AT, after:$after){
+      edges{ cursor node{ id createdAt
+        subtotalPriceSet{ shopMoney{ amount } } totalPriceSet{ shopMoney{ amount } }
+        lineItems(first:100){ edges{ node{ quantity
+          originalTotalSet{ shopMoney{ amount } }
+          discountAllocations{ allocatedAmountSet{ shopMoney{ amount } } }
+          customAttributes{ key value } } } } } }
+      pageInfo{ hasNextPage endCursor } } }`;
+  let cursor = null, pages = 0, orders = 0, revenue = 0, influenced = 0, attributed = 0, go = true;
+  while (go && pages < 60) {
+    const data = await deps.gql(shop, token, q, { q: "created_at:>=" + since, after: cursor });
+    const conn = data && data.data && data.data.orders;
+    if (!conn) break;
+    for (const edge of (conn.edges || [])) {
+      const n = edge.node; if (!n) continue;
+      orders++;
+      revenue += num(n.subtotalPriceSet && n.subtotalPriceSet.shopMoney && n.subtotalPriceSet.shopMoney.amount)
+        || num(n.totalPriceSet && n.totalPriceSet.shopMoney && n.totalPriceSet.shopMoney.amount);
+      let att = 0, hit = false;
+      for (const le of ((n.lineItems && n.lineItems.edges) || [])) {
+        const li = le.node; if (!li) continue;
+        if (isAttributedLine(li.customAttributes)) {
+          hit = true;
+          const orig = num(li.originalTotalSet && li.originalTotalSet.shopMoney && li.originalTotalSet.shopMoney.amount);
+          const alloc = (li.discountAllocations || []).reduce(function (x, da) {
+            return x + num(da && da.allocatedAmountSet && da.allocatedAmountSet.shopMoney && da.allocatedAmountSet.shopMoney.amount);
+          }, 0);
+          att += Math.max(0, orig - alloc);
+        }
+      }
+      if (hit) influenced++;
+      attributed += att;
+    }
+    pages++;
+    if (conn.pageInfo && conn.pageInfo.hasNextPage) { cursor = conn.pageInfo.endCursor; } else { go = false; }
+  }
+  const baseline = Math.max(0, revenue - attributed);
+  const aovWith = orders ? revenue / orders : 0;
+  const aovWithout = orders ? baseline / orders : 0;
+  const upliftPct = baseline > 0 ? (attributed / baseline) * 100 : 0;
+  return {
+    range_days: rangeDays,
+    k,
+    live: true,
+    enough_data: orders >= MIN_ORDERS,
+    min_orders: MIN_ORDERS,
+    totals: { orders, revenue: round2(revenue), influenced_orders: influenced, attributed_revenue: round2(attributed) },
+    aov: {
+      with_app: round2(aovWith),
+      without_app: round2(aovWithout),
+      uplift_pct: round2(upliftPct),
+      uplift_pct_incr: round2(upliftPct * k),
+      added_per_order: round2(aovWith - aovWithout),
+      added_per_order_incr: round2((orders ? attributed / orders : 0) * k),
+      attributed_revenue: round2(attributed),
+      influenced_share: orders ? round2((influenced / orders) * 100) : 0,
+    },
+  };
+}
+
 // ── Compute the AOV-impact payload for a date range ──
 async function computeImpact(shop, rangeDays) {
   const cfg = (await dbGet(cfgKey(shop))) || {};
@@ -239,38 +305,28 @@ export function mountImpact(app, deps) {
     return { shop, token };
   };
 
-  // Dashboard data (GET). Until history is complete, each call also processes
-  // ONE resumable chunk of the backfill INLINE (a few seconds), saves the
-  // cursor, and tells the card to poll again — so history completes reliably
-  // even on deployments that kill background work.
+  // Dashboard data (GET) — computed LIVE from Shopify orders on every call,
+  // exactly like loadStats()/the black bar. NO database dependency: Replit
+  // deployments cannot write to the Repl DB (verified: write_ok=false), so any
+  // stored-aggregate design silently fails in production. Live compute uses
+  // the same API, the same attribution and the same price math as the black
+  // bar, at the same moment — the two widgets cannot disagree.
+  // A small in-memory cache (2 min) keeps repeat loads fast.
+  const LIVE_CACHE = {};
   app.get("/impact", async (req, res) => {
     res.set("Content-Type", "application/json");
     try {
       const a = await authShop(req, res); if (!a) return;
       const { shop, token } = a;
       if (!token) return res.status(200).send(JSON.stringify({ error: "not installed" }));
-      let meta = (await dbGet(metaKey(shop))) || {};
-      meta = await ensureWebhook(shop, token, deps, meta);
-      // peek=1 → never do heavy work; just return current totals fast.
-      const peek = String(req.query.peek || "") === "1";
-      if (!meta.bfDone && !peek) {
-        const now = Date.now();
-        if (!meta.bfLock || now - meta.bfLock > 240000) {   // one worker at a time
-          meta.bfLock = now;
-          await dbSet(metaKey(shop), meta);
-          try {
-            const r = await backfillChunk(shop, token, deps, BACKFILL_DAYS, meta.bfCursor, 1);
-            meta.bfSeen = (meta.bfSeen || 0) + r.seen;
-            meta.bfCursor = r.cursor;
-            if (r.done) { meta.bfDone = true; meta.backfilledAt = Date.now(); }
-          } catch (e) {}
-          meta.bfLock = 0;
-          await dbSet(metaKey(shop), meta);
-        }
-      }
       const range = Math.min(365, Math.max(1, parseInt(req.query.range || "30", 10)));
-      const payload = await computeImpact(shop, range);
-      payload.backfilling = meta.bfDone ? false : true;
+      const ck = sh(shop) + ":" + range;
+      const hit = LIVE_CACHE[ck];
+      if (hit && Date.now() - hit.t < 120000) {
+        return res.status(200).send(JSON.stringify(hit.data));
+      }
+      const payload = await computeImpactLive(shop, token, deps, range);
+      LIVE_CACHE[ck] = { t: Date.now(), data: payload };
       res.status(200).send(JSON.stringify(payload));
     } catch (e) {
       res.status(200).send(JSON.stringify({ error: e.message }));
@@ -368,16 +424,14 @@ export function impactScript() {
     "(function(){",
     "  var body=document.getElementById('bkImpactBody'), note=document.getElementById('bkImpactNote'), exp=document.getElementById('bkImpactExplain'), sel=document.getElementById('bkImpactRange');",
     "  if(!body) return;",
-    "  var hasTiles=false, driving=false;",
-    "  function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}",
-    "  async function drive(){ if(driving) return; driving=true; try{ var n=0; while(n<120){ n++; var d=null; try{ var h=await bkAuth(); d=await fetch('/impact?range=7',{headers:h}).then(function(r){return r.json();}); }catch(e){} if(!(d&&d.backfilling)) break; await sleep(4000); } }catch(e){} driving=false; load(); }",
+    "  var hasTiles=false;",
     "  function money(n){try{return (window.Shopify&&Shopify.currency&&Shopify.currency.active?Shopify.currency.active+' ':'$')+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}catch(e){return '$'+Number(n||0).toFixed(2);}}",
     "  function tile(label,val,sub){return \"<div style='flex:1 1 150px;min-width:150px;border:1px solid #e6e6e6;border-radius:10px;padding:14px'><div style='font-size:12px;color:#8a8a8a'>\"+label+\"</div><div style='font-size:22px;font-weight:700;margin-top:4px'>\"+val+\"</div>\"+(sub?\"<div style='font-size:12px;color:#8a8a8a;margin-top:2px'>\"+sub+\"</div>\":\"\")+\"</div>\";}",
     "  function row(name,formula,result){return \"<tr><td style='padding:4px 10px 4px 0;font-weight:600;white-space:nowrap;vertical-align:top'>\"+name+\"</td><td style='padding:4px 0;color:#555'>\"+formula+\" = <b>\"+result+\"</b></td></tr>\";}",
     "  async function bkAuth(){var h={Accept:'application/json'};try{if(window.shopify&&shopify.idToken){h.Authorization='Bearer '+(await shopify.idToken());}}catch(e){}return h;}",
     "  async function load(){",
     "    if(hasTiles===false){ body.innerHTML='Loading…'; note.textContent=''; if(exp) exp.innerHTML=''; }",
-    "    try{ var h=await bkAuth(); var d=await fetch('/impact?range='+(sel?sel.value:'30')+'&peek=1',{headers:h}).then(function(r){return r.json();});",
+    "    try{ var h=await bkAuth(); var d=await fetch('/impact?range='+(sel?sel.value:'30'),{headers:h}).then(function(r){return r.json();});",
     "      if(d.error==='not installed'){body.innerHTML='Connect the app to see impact.';return;}",
     "      if(d.error){body.innerHTML='Could not load impact ('+d.error+').';return;}",
     "      if(!d.enough_data){ body.innerHTML=\"<div style='color:#8a8a8a'>Gathering data — impact shows once there are at least \"+d.min_orders+\" orders in range (\"+(d.totals?d.totals.orders:0)+\" so far).</div>\"; }",
@@ -405,7 +459,6 @@ export function impactScript() {
     "        exp.innerHTML=eh;",
     "      }",
     "      note.textContent='Counts the same widget-added items as the bar below (product rail, cart drawer, Selected For You), at prices after discounts. \\u201cEstimated\\u201d applies a '+kpct+'% incrementality factor. Based on '+ (t.orders||0) +' orders.';",
-    "      if(d.backfilling){ note.textContent='Building order history\\u2026 '+(t.orders||0)+' orders processed so far. This card updates automatically until complete.'; drive(); setTimeout(load, 4000); }",
     "    }catch(e){ body.innerHTML='Could not load impact.'; }",
     "  }",
     "  if(sel) sel.addEventListener('change', load);",
