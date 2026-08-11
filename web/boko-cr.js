@@ -237,7 +237,7 @@ export function mountCr(app, deps) {
 
   // Storefront beacon (via app proxy /apps/reco/cr → /proxy/cr).
   // Shopify's app proxy appends ?shop=<shop domain> to every request.
-  app.get("/proxy/cr", async (req, res) => {
+  app.all("/proxy/cr", async (req, res) => {
     try {
       const shop = clean(String(req.query.shop || ""), 80);
       const e = String(req.query.e || "");
