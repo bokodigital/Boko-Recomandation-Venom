@@ -107,11 +107,14 @@ async function recordOrder(shop, o) {
   return true;
 }
 
-// ── Backfill last N days via Admin GraphQL (idempotent via dedupe) ──
-// Query + price math mirror loadStats(): originalTotalSet minus discountAllocations.
-async function backfill(shop, token, deps, days) {
+// ── Backfill via Admin GraphQL, in RESUMABLE CHUNKS ────────────────────────
+// The deployed app cannot run long background jobs (they are killed after the
+// HTTP response), so history is built inline: each call processes up to
+// maxPages pages (100 orders each) from a saved cursor and returns
+// { seen, cursor, done }. Query + price math mirror loadStats().
+async function backfillChunk(shop, token, deps, days, startCursor, maxPages) {
   const since = new Date(Date.now() - days * 864e5).toISOString();
-  let cursor = null, pages = 0, seen = 0;
+  let cursor = startCursor || null, pages = 0, seen = 0, done = false;
   const q = `query($q:String!,$after:String){ orders(first:100, query:$q, sortKey:CREATED_AT, after:$after){
       edges{ cursor node{ id createdAt
         subtotalPriceSet{ shopMoney{ amount } } totalPriceSet{ shopMoney{ amount } }
@@ -120,10 +123,10 @@ async function backfill(shop, token, deps, days) {
           discountAllocations{ allocatedAmountSet{ shopMoney{ amount } } }
           customAttributes{ key value } } } } } }
       pageInfo{ hasNextPage endCursor } } }`;
-  do {
+  while (pages < maxPages) {
     const data = await deps.gql(shop, token, q, { q: "created_at:>=" + since, after: cursor });
     const conn = data && data.data && data.data.orders;
-    if (!conn) break;
+    if (!conn) { done = true; break; }
     for (const edge of (conn.edges || [])) {
       const n = edge.node; if (!n) continue;
       const items = (n.lineItems && n.lineItems.edges) || [];
@@ -145,10 +148,21 @@ async function backfill(shop, token, deps, days) {
       cursor = edge.cursor;
     }
     pages++;
-    if (!conn.pageInfo || !conn.pageInfo.hasNextPage) break;
+    if (!conn.pageInfo || !conn.pageInfo.hasNextPage) { done = true; break; }
     cursor = conn.pageInfo.endCursor;
-  } while (pages < 60);   // safety cap (~6000 orders)
-  return seen;
+  }
+  return { seen: seen, cursor: cursor, done: done };
+}
+
+// Full backfill to completion (for the shell / manual POST route).
+async function backfill(shop, token, deps, days) {
+  let cur = null, total = 0;
+  for (let i = 0; i < 15; i++) {   // 15 × 5 pages = up to 7500 orders
+    const r = await backfillChunk(shop, token, deps, days, cur, 5);
+    total += r.seen; cur = r.cursor;
+    if (r.done) break;
+  }
+  return total;
 }
 
 // Ensure the orders/create webhook exists (idempotent; ignores "already exists").
@@ -219,8 +233,10 @@ export function mountImpact(app, deps) {
     return { shop, token };
   };
 
-  // Dashboard data (GET). First call ensures the webhook + kicks off a
-  // NON-BLOCKING backfill (runs in background; page never hangs on it).
+  // Dashboard data (GET). Until history is complete, each call also processes
+  // ONE resumable chunk of the backfill INLINE (a few seconds), saves the
+  // cursor, and tells the card to poll again — so history completes reliably
+  // even on deployments that kill background work.
   app.get("/impact", async (req, res) => {
     res.set("Content-Type", "application/json");
     try {
@@ -229,17 +245,25 @@ export function mountImpact(app, deps) {
       if (!token) return res.status(200).send(JSON.stringify({ error: "not installed" }));
       let meta = (await dbGet(metaKey(shop))) || {};
       meta = await ensureWebhook(shop, token, deps, meta);
-      if (!meta.backfilledAt) {
-        try {
-          meta.backfilledAt = Date.now();
+      if (!meta.bfDone) {
+        const now = Date.now();
+        if (!meta.bfLock || now - meta.bfLock > 30000) {   // one worker at a time
+          meta.bfLock = now;
           await dbSet(metaKey(shop), meta);
-          backfill(shop, token, deps, BACKFILL_DAYS)
-            .then(function (n) { meta.backfilled = n; return dbSet(metaKey(shop), meta); })
-            .catch(function () {});
-        } catch (e) {}
+          try {
+            const r = await backfillChunk(shop, token, deps, BACKFILL_DAYS, meta.bfCursor, 4);
+            meta.bfSeen = (meta.bfSeen || 0) + r.seen;
+            meta.bfCursor = r.cursor;
+            if (r.done) { meta.bfDone = true; meta.backfilledAt = Date.now(); }
+          } catch (e) {}
+          meta.bfLock = 0;
+          await dbSet(metaKey(shop), meta);
+        }
       }
       const range = Math.min(365, Math.max(1, parseInt(req.query.range || "30", 10)));
-      res.status(200).send(JSON.stringify(await computeImpact(shop, range)));
+      const payload = await computeImpact(shop, range);
+      payload.backfilling = meta.bfDone ? false : true;
+      res.status(200).send(JSON.stringify(payload));
     } catch (e) {
       res.status(200).send(JSON.stringify({ error: e.message }));
     }
@@ -254,7 +278,7 @@ export function mountImpact(app, deps) {
       if (!token) return res.status(200).send(JSON.stringify({ error: "not installed" }));
       const days = Math.min(365, Math.max(1, parseInt((req.query.days || BACKFILL_DAYS), 10)));
       const n = await backfill(shop, token, deps, days);
-      const meta = (await dbGet(metaKey(shop))) || {}; meta.backfilledAt = Date.now(); await dbSet(metaKey(shop), meta);
+      const meta = (await dbGet(metaKey(shop))) || {}; meta.backfilledAt = Date.now(); meta.bfDone = true; await dbSet(metaKey(shop), meta);
       res.status(200).send(JSON.stringify({ ok: true, recorded: n }));
     } catch (e) { res.status(200).send(JSON.stringify({ ok: false, error: e.message })); }
   });
@@ -347,6 +371,7 @@ export function impactScript() {
     "        exp.innerHTML=eh;",
     "      }",
     "      note.textContent='Counts the same widget-added items as the bar below (product rail, cart drawer, Selected For You), at prices after discounts. \\u201cEstimated\\u201d applies a '+kpct+'% incrementality factor. Based on '+ (t.orders||0) +' orders.';",
+    "      if(d.backfilling){ note.textContent='Building order history\\u2026 '+(t.orders||0)+' orders processed so far. This page updates automatically until complete.'; setTimeout(load, 2500); }",
     "    }catch(e){ body.innerHTML='Could not load impact.'; }",
     "  }",
     "  if(sel) sel.addEventListener('change', load);",
