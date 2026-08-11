@@ -245,13 +245,15 @@ export function mountImpact(app, deps) {
       if (!token) return res.status(200).send(JSON.stringify({ error: "not installed" }));
       let meta = (await dbGet(metaKey(shop))) || {};
       meta = await ensureWebhook(shop, token, deps, meta);
-      if (!meta.bfDone) {
+      // peek=1 → never do heavy work; just return current totals fast.
+      const peek = String(req.query.peek || "") === "1";
+      if (!meta.bfDone && !peek) {
         const now = Date.now();
-        if (!meta.bfLock || now - meta.bfLock > 30000) {   // one worker at a time
+        if (!meta.bfLock || now - meta.bfLock > 240000) {   // one worker at a time
           meta.bfLock = now;
           await dbSet(metaKey(shop), meta);
           try {
-            const r = await backfillChunk(shop, token, deps, BACKFILL_DAYS, meta.bfCursor, 4);
+            const r = await backfillChunk(shop, token, deps, BACKFILL_DAYS, meta.bfCursor, 2);
             meta.bfSeen = (meta.bfSeen || 0) + r.seen;
             meta.bfCursor = r.cursor;
             if (r.done) { meta.bfDone = true; meta.backfilledAt = Date.now(); }
@@ -337,13 +339,15 @@ export function impactScript() {
     "(function(){",
     "  var body=document.getElementById('bkImpactBody'), note=document.getElementById('bkImpactNote'), exp=document.getElementById('bkImpactExplain'), sel=document.getElementById('bkImpactRange');",
     "  if(!body) return;",
+    "  var hasTiles=false, driving=false;",
+    "  async function drive(){ if(driving) return; driving=true; try{ var h=await bkAuth(); var d=null; do{ d=await fetch('/impact?range=7',{headers:h}).then(function(r){return r.json();}); }while(d&&d.backfilling); }catch(e){} driving=false; load(); }",
     "  function money(n){try{return (window.Shopify&&Shopify.currency&&Shopify.currency.active?Shopify.currency.active+' ':'$')+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}catch(e){return '$'+Number(n||0).toFixed(2);}}",
     "  function tile(label,val,sub){return \"<div style='flex:1 1 150px;min-width:150px;border:1px solid #e6e6e6;border-radius:10px;padding:14px'><div style='font-size:12px;color:#8a8a8a'>\"+label+\"</div><div style='font-size:22px;font-weight:700;margin-top:4px'>\"+val+\"</div>\"+(sub?\"<div style='font-size:12px;color:#8a8a8a;margin-top:2px'>\"+sub+\"</div>\":\"\")+\"</div>\";}",
     "  function row(name,formula,result){return \"<tr><td style='padding:4px 10px 4px 0;font-weight:600;white-space:nowrap;vertical-align:top'>\"+name+\"</td><td style='padding:4px 0;color:#555'>\"+formula+\" = <b>\"+result+\"</b></td></tr>\";}",
     "  async function bkAuth(){var h={Accept:'application/json'};try{if(window.shopify&&shopify.idToken){h.Authorization='Bearer '+(await shopify.idToken());}}catch(e){}return h;}",
     "  async function load(){",
-    "    body.innerHTML='Loading…'; note.textContent=''; if(exp) exp.innerHTML='';",
-    "    try{ var h=await bkAuth(); var d=await fetch('/impact?range='+(sel?sel.value:'30'),{headers:h}).then(function(r){return r.json();});",
+    "    if(hasTiles===false){ body.innerHTML='Loading…'; note.textContent=''; if(exp) exp.innerHTML=''; }",
+    "    try{ var h=await bkAuth(); var d=await fetch('/impact?range='+(sel?sel.value:'30')+'&peek=1',{headers:h}).then(function(r){return r.json();});",
     "      if(d.error==='not installed'){body.innerHTML='Connect the app to see impact.';return;}",
     "      if(d.error){body.innerHTML='Could not load impact ('+d.error+').';return;}",
     "      if(!d.enough_data){ body.innerHTML=\"<div style='color:#8a8a8a'>Gathering data — impact shows once there are at least \"+d.min_orders+\" orders in range (\"+(d.totals?d.totals.orders:0)+\" so far).</div>\"; }",
@@ -353,7 +357,7 @@ export function impactScript() {
     "      html+=tile('Added per order', '+'+money(a.added_per_order_incr), 'from recommendations');",
     "      html+=tile('Revenue from Boko', money(a.attributed_revenue), t.influenced_orders+' orders influenced');",
     "      html+=tile('AOV with / without', money(a.with_app)+' / '+money(a.without_app), (a.influenced_share||0).toFixed(0)+'% of orders influenced');",
-    "      html+=\"</div>\"; body.innerHTML=html;",
+    "      html+=\"</div>\"; body.innerHTML=html; hasTiles=true;",
     "      if(exp){",
     "        var base=Math.max(0,(t.revenue||0)-(a.attributed_revenue||0));",
     "        var eh=\"<details style='margin-top:12px'><summary style='cursor:pointer;font-size:13px;color:#444;font-weight:600'>How these numbers are calculated</summary>\";",
@@ -371,7 +375,7 @@ export function impactScript() {
     "        exp.innerHTML=eh;",
     "      }",
     "      note.textContent='Counts the same widget-added items as the bar below (product rail, cart drawer, Selected For You), at prices after discounts. \\u201cEstimated\\u201d applies a '+kpct+'% incrementality factor. Based on '+ (t.orders||0) +' orders.';",
-    "      if(d.backfilling){ note.textContent='Building order history\\u2026 '+(t.orders||0)+' orders processed so far. This page updates automatically until complete.'; setTimeout(load, 2500); }",
+    "      if(d.backfilling){ note.textContent='Building order history\\u2026 '+(t.orders||0)+' orders processed so far. This card updates automatically until complete.'; drive(); setTimeout(load, 4000); }",
     "    }catch(e){ body.innerHTML='Could not load impact.'; }",
     "  }",
     "  if(sel) sel.addEventListener('change', load);",

@@ -126,7 +126,13 @@ async function backfillChunk(shop, token, deps, days, startCursor, maxPages) {
   while (pages < maxPages) {
     const data = await deps.gql(shop, token, q, { q: "created_at:>=" + since, after: cursor });
     const conn = data && data.data && data.data.orders;
-    if (!conn) { done = true; break; }
+    if (!conn) {
+      // A stale/expired cursor makes Shopify error out — restart the scan from
+      // the beginning (dedupe makes re-scanning cheap) instead of wrongly
+      // declaring the backfill complete.
+      if (pages === 0 && cursor) return { seen: 0, cursor: null, done: false };
+      done = true; break;
+    }
     for (const edge of (conn.edges || [])) {
       const n = edge.node; if (!n) continue;
       const items = (n.lineItems && n.lineItems.edges) || [];
@@ -253,7 +259,7 @@ export function mountImpact(app, deps) {
           meta.bfLock = now;
           await dbSet(metaKey(shop), meta);
           try {
-            const r = await backfillChunk(shop, token, deps, BACKFILL_DAYS, meta.bfCursor, 2);
+            const r = await backfillChunk(shop, token, deps, BACKFILL_DAYS, meta.bfCursor, 1);
             meta.bfSeen = (meta.bfSeen || 0) + r.seen;
             meta.bfCursor = r.cursor;
             if (r.done) { meta.bfDone = true; meta.backfilledAt = Date.now(); }
@@ -340,7 +346,8 @@ export function impactScript() {
     "  var body=document.getElementById('bkImpactBody'), note=document.getElementById('bkImpactNote'), exp=document.getElementById('bkImpactExplain'), sel=document.getElementById('bkImpactRange');",
     "  if(!body) return;",
     "  var hasTiles=false, driving=false;",
-    "  async function drive(){ if(driving) return; driving=true; try{ var h=await bkAuth(); var d=null; do{ d=await fetch('/impact?range=7',{headers:h}).then(function(r){return r.json();}); }while(d&&d.backfilling); }catch(e){} driving=false; load(); }",
+    "  function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}",
+    "  async function drive(){ if(driving) return; driving=true; try{ var n=0; while(n<120){ n++; var d=null; try{ var h=await bkAuth(); d=await fetch('/impact?range=7',{headers:h}).then(function(r){return r.json();}); }catch(e){} if(!(d&&d.backfilling)) break; await sleep(4000); } }catch(e){} driving=false; load(); }",
     "  function money(n){try{return (window.Shopify&&Shopify.currency&&Shopify.currency.active?Shopify.currency.active+' ':'$')+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}catch(e){return '$'+Number(n||0).toFixed(2);}}",
     "  function tile(label,val,sub){return \"<div style='flex:1 1 150px;min-width:150px;border:1px solid #e6e6e6;border-radius:10px;padding:14px'><div style='font-size:12px;color:#8a8a8a'>\"+label+\"</div><div style='font-size:22px;font-weight:700;margin-top:4px'>\"+val+\"</div>\"+(sub?\"<div style='font-size:12px;color:#8a8a8a;margin-top:2px'>\"+sub+\"</div>\":\"\")+\"</div>\";}",
     "  function row(name,formula,result){return \"<tr><td style='padding:4px 10px 4px 0;font-weight:600;white-space:nowrap;vertical-align:top'>\"+name+\"</td><td style='padding:4px 0;color:#555'>\"+formula+\" = <b>\"+result+\"</b></td></tr>\";}",
