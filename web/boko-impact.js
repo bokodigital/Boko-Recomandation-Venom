@@ -277,6 +277,29 @@ export function mountImpact(app, deps) {
     }
   });
 
+  // TEMP diagnostic (read-only + one throwaway write test; secret-gated).
+  // Remove after the rebuild is verified.
+  app.get("/proxy/impactdbg", async (req, res) => {
+    res.set("Content-Type", "application/json");
+    try {
+      if (String(req.query.key || "") !== "bk7391x") { res.status(404).end(); return; }
+      const shop = String(req.query.s || "venomemilio.myshopify.com");
+      const meta = await dbGet(metaKey(shop));
+      let orders = 0, attr = 0, days = 0;
+      for (let i = 0; i < 90; i++) {
+        const r = await dbGet(dayKey(shop, isoDay(Date.now() - i * 864e5)));
+        if (r) { days++; orders += r.orders; attr += r.attributed_revenue; }
+      }
+      const stamp = Date.now();
+      await dbSet("boko_dbg_w", stamp);
+      const rb = await dbGet("boko_dbg_w");
+      res.status(200).send(JSON.stringify({
+        meta: meta, day_rows: days, orders: orders, attr: Math.round(attr * 100) / 100,
+        write_ok: rb === stamp, now: stamp,
+      }));
+    } catch (e) { res.status(200).send(JSON.stringify({ error: e.message })); }
+  });
+
   // Manual re-backfill (optional; authed).
   app.post("/impact/backfill", async (req, res) => {
     res.set("Content-Type", "application/json");
