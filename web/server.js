@@ -25,7 +25,8 @@ import { mountIndustry, industryCardHtml, industryScript } from "./boko-industry
 import { mountImpact, impactCardHtml, impactScript } from "./boko-impact.js";
 import { mountCr, crCardHtml, crScript } from "./boko-cr.js";
 import { mountKlaviyo } from "./boko-klaviyo.js";
-import { mountKlaviyoFeeds } from "./boko-klaviyo-feeds.js"; // BOKO KLAVIYO FEEDS - Step 3 (self-contained; safe to remove) // BOKO KLAVIYO MODULE - Step 1 cache (self-contained; safe to remove) // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
+import { mountKlaviyoFeeds } from "./boko-klaviyo-feeds.js";
+import { mountKlaviyoImpact, klaviyoCardHtml, klaviyoScript } from "./boko-klaviyo-card.js"; // BOKO KLAVIYO CARD - Step 7 (self-contained; safe to remove) // BOKO KLAVIYO FEEDS - Step 3 (self-contained; safe to remove) // BOKO KLAVIYO MODULE - Step 1 cache (self-contained; safe to remove) // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const API_KEY = process.env.SHOPIFY_API_KEY || "";
@@ -612,6 +613,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted
 __BOKO_INDUSTRY_CARD__
 __BOKO_IMPACT_CARD__
 __BOKO_CR_CARD__
+__BOKO_KLAVIYO_CARD__
 <div class="row"><label class="sub" style="margin:0">Period</label>
 <select id="days"><option value="30">Last 30 days</option><option value="90" selected>Last 90 days</option><option value="365">Last 12 months</option></select>
 <span id="meta" class="sub" style="margin:0 0 0 auto"></span></div>
@@ -713,6 +715,7 @@ document.getElementById("days").addEventListener("change",load); load();
 __BOKO_INDUSTRY_SCRIPT__
 __BOKO_IMPACT_SCRIPT__
 __BOKO_CR_SCRIPT__
+__BOKO_KLAVIYO_SCRIPT__
 </script></body></html>`;
 
 app.get("/dashboard", (req, res) => {
@@ -736,7 +739,7 @@ app.get("/dashboard", (req, res) => {
         .replace("__BOKO_IMPACT_CARD__", ()=>impactCardHtml()) // BOKO IMPACT MODULE
         .replace("__BOKO_IMPACT_SCRIPT__", ()=>impactScript())
     .replace("__BOKO_CR_CARD__", () => crCardHtml())
-    .replace("__BOKO_CR_SCRIPT__", () => crScript()), // BOKO IMPACT MODULE
+    .replace("__BOKO_CR_SCRIPT__", () => crScript()).replace("__BOKO_KLAVIYO_CARD__", () => klaviyoCardHtml()).replace("__BOKO_KLAVIYO_SCRIPT__", () => klaviyoScript()), // BOKO IMPACT MODULE
     );
 });
 
@@ -772,6 +775,7 @@ mountKlaviyo(app, {
   complementaryPool: bokoComplementaryPool,
 }); // BOKO KLAVIYO MODULE
 mountKlaviyoFeeds(app); // BOKO KLAVIYO FEEDS
+mountKlaviyoImpact(app, { shopFromToken: shopFromSessionToken }); // BOKO KLAVIYO CARD
 
 
 // ---------- Uninstall webhook (HMAC verified) — removes only this shop's token ----------
