@@ -26,7 +26,8 @@ import { mountImpact, impactCardHtml, impactScript } from "./boko-impact.js";
 import { mountCr, crCardHtml, crScript } from "./boko-cr.js";
 import { mountKlaviyo } from "./boko-klaviyo.js";
 import { mountKlaviyoFeeds } from "./boko-klaviyo-feeds.js";
-import { mountKlaviyoImpact, klaviyoCardHtml, klaviyoScript } from "./boko-klaviyo-card.js"; // BOKO KLAVIYO CARD - Step 7 (self-contained; safe to remove) // BOKO KLAVIYO FEEDS - Step 3 (self-contained; safe to remove) // BOKO KLAVIYO MODULE - Step 1 cache (self-contained; safe to remove) // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
+import { mountKlaviyoImpact, klaviyoCardHtml, klaviyoScript } from "./boko-klaviyo-card.js";
+import { mountKlaviyoSync } from "./boko-klaviyo-sync.js"; // BOKO KLAVIYO SYNC - Step 4 (dormant until KLAVIYO_API_KEY set) // BOKO KLAVIYO CARD - Step 7 (self-contained; safe to remove) // BOKO KLAVIYO FEEDS - Step 3 (self-contained; safe to remove) // BOKO KLAVIYO MODULE - Step 1 cache (self-contained; safe to remove) // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const API_KEY = process.env.SHOPIFY_API_KEY || "";
@@ -776,6 +777,7 @@ mountKlaviyo(app, {
 }); // BOKO KLAVIYO MODULE
 mountKlaviyoFeeds(app); // BOKO KLAVIYO FEEDS
 mountKlaviyoImpact(app, { shopFromToken: shopFromSessionToken }); // BOKO KLAVIYO CARD
+mountKlaviyoSync(app); // BOKO KLAVIYO SYNC
 
 
 // ---------- Uninstall webhook (HMAC verified) — removes only this shop's token ----------

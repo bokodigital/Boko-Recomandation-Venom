@@ -20,7 +20,7 @@ async function ensure() {
   await p.query("CREATE TABLE IF NOT EXISTS boko_kv (k TEXT PRIMARY KEY, v JSONB NOT NULL)");
   return true;
 }
-async function kvSet(k, v) {
+export async function kvSet(k, v) {
   const p = db();
   if (!p) return;
   await p.query("INSERT INTO boko_kv (k,v) VALUES ($1,$2) ON CONFLICT (k) DO UPDATE SET v=$2", [k, v]);
@@ -171,6 +171,7 @@ export function mountKlaviyo(app, deps) {
       });
       if (cur.events.length > 300) cur.events = cur.events.slice(-300);
       await kvSet(k, cur);
+      if (globalThis.__bklClickHook) { try { globalThis.__bklClickHook(p); } catch (e) {} }
     } catch (e) { /* never block or fail the redirect on logging */ }
   }
 
