@@ -25,7 +25,7 @@ async function kvSet(k, v) {
   if (!p) return;
   await p.query("INSERT INTO boko_kv (k,v) VALUES ($1,$2) ON CONFLICT (k) DO UPDATE SET v=$2", [k, v]);
 }
-async function kvGet(k) {
+export async function kvGet(k) {
   const p = db();
   if (!p) return null;
   const r = await p.query("SELECT v FROM boko_kv WHERE k=$1", [k]);
@@ -43,7 +43,7 @@ function unb64u(s) {
   while (s.length % 4) s += "=";
   return Buffer.from(s, "base64").toString("utf8");
 }
-function sign(payloadB64) {
+export function sign(payloadB64) {
   return b64u(crypto.createHmac("sha256", SECRET).update(payloadB64).digest()).slice(0, 22);
 }
 export function mintToken(payload) {

@@ -24,7 +24,8 @@ import { track, funnelCounts } from "./boko-tracker.js";
 import { mountIndustry, industryCardHtml, industryScript } from "./boko-industry.js"; // BOKO INDUSTRY MODULE (self-contained; safe to remove)
 import { mountImpact, impactCardHtml, impactScript } from "./boko-impact.js";
 import { mountCr, crCardHtml, crScript } from "./boko-cr.js";
-import { mountKlaviyo } from "./boko-klaviyo.js"; // BOKO KLAVIYO MODULE - Step 1 cache (self-contained; safe to remove) // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
+import { mountKlaviyo } from "./boko-klaviyo.js";
+import { mountKlaviyoFeeds } from "./boko-klaviyo-feeds.js"; // BOKO KLAVIYO FEEDS - Step 3 (self-contained; safe to remove) // BOKO KLAVIYO MODULE - Step 1 cache (self-contained; safe to remove) // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const API_KEY = process.env.SHOPIFY_API_KEY || "";
@@ -770,6 +771,7 @@ mountKlaviyo(app, {
   recommend,
   complementaryPool: bokoComplementaryPool,
 }); // BOKO KLAVIYO MODULE
+mountKlaviyoFeeds(app); // BOKO KLAVIYO FEEDS
 
 
 // ---------- Uninstall webhook (HMAC verified) — removes only this shop's token ----------
