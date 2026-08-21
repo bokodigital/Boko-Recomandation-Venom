@@ -150,7 +150,7 @@ export function mountKlaviyoSync(app) {
       const ctl = ctlKey ? await kvGet("bkl_ctl:" + shop + ":" + ctlKey) : null;
       const cutoff = new Date(Date.now() - 180 * 86400000).toISOString();
       let scanned = 0, patched = 0, skipped = 0, failed = 0, done = false;
-      let path = "/profiles?sort=-last_event_date&page%5Bsize%5D=100";
+      let path = "/profiles?sort=-updated&page%5Bsize%5D=100";
       while (!done && path && scanned < limit) {
         const page = await kapi(kk, path);
         if (page.status !== 200 || !page.json || !page.json.data) {
@@ -160,7 +160,8 @@ export function mountKlaviyoSync(app) {
           if (scanned >= limit) { done = true; break; }
           scanned++;
           const at = prof.attributes || {};
-          if (at.last_event_date && at.last_event_date < cutoff) { done = true; break; }
+          if (at.updated && at.updated < cutoff) { done = true; break; }
+          if (at.last_event_date && at.last_event_date < cutoff) { skipped++; continue; }
           if (!at.email) { skipped++; continue; }
           if (dry) { patched++; continue; }
           const props = buildProps(shop, best, ctl, at.email);
