@@ -163,6 +163,7 @@ export function mountKlaviyoSync(app) {
           if (at.updated && at.updated < cutoff) { done = true; break; }
           if (at.last_event_date && at.last_event_date < cutoff) { skipped++; continue; }
           if (!at.email) { skipped++; continue; }
+          const pr = at.properties || {}; if (!dry && pr.boko_updated_at && pr.boko_updated_at > new Date(Date.now() - 20 * 3600000).toISOString()) { skipped++; continue; }
           if (dry) { patched++; continue; }
           const props = buildProps(shop, best, ctl, at.email);
           const r = await kapi(kk, "/profiles/" + prof.id + "/", "PATCH", {
