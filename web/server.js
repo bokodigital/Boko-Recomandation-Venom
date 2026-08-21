@@ -27,7 +27,8 @@ import { mountCr, crCardHtml, crScript } from "./boko-cr.js";
 import { mountKlaviyo } from "./boko-klaviyo.js";
 import { mountKlaviyoFeeds } from "./boko-klaviyo-feeds.js";
 import { mountKlaviyoImpact, klaviyoCardHtml, klaviyoScript } from "./boko-klaviyo-card.js";
-import { mountKlaviyoSync } from "./boko-klaviyo-sync.js"; // BOKO KLAVIYO SYNC - Step 4 (dormant until KLAVIYO_API_KEY set) // BOKO KLAVIYO CARD - Step 7 (self-contained; safe to remove) // BOKO KLAVIYO FEEDS - Step 3 (self-contained; safe to remove) // BOKO KLAVIYO MODULE - Step 1 cache (self-contained; safe to remove) // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
+import { mountKlaviyoSync } from "./boko-klaviyo-sync.js";
+import { mountKlaviyoSettings, klvSettingsCardHtml } from "./boko-klaviyo-settings.js"; // BOKO KLAVIYO SETTINGS - per-store connection // BOKO KLAVIYO SYNC - Step 4 (dormant until KLAVIYO_API_KEY set) // BOKO KLAVIYO CARD - Step 7 (self-contained; safe to remove) // BOKO KLAVIYO FEEDS - Step 3 (self-contained; safe to remove) // BOKO KLAVIYO MODULE - Step 1 cache (self-contained; safe to remove) // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const API_KEY = process.env.SHOPIFY_API_KEY || "";
@@ -740,7 +741,7 @@ app.get("/dashboard", (req, res) => {
         .replace("__BOKO_IMPACT_CARD__", ()=>impactCardHtml()) // BOKO IMPACT MODULE
         .replace("__BOKO_IMPACT_SCRIPT__", ()=>impactScript())
     .replace("__BOKO_CR_CARD__", () => crCardHtml())
-    .replace("__BOKO_CR_SCRIPT__", () => crScript()).replace("__BOKO_KLAVIYO_CARD__", () => klaviyoCardHtml()).replace("__BOKO_KLAVIYO_SCRIPT__", () => klaviyoScript()), // BOKO IMPACT MODULE
+    .replace("__BOKO_CR_SCRIPT__", () => crScript()).replace("__BOKO_KLAVIYO_CARD__", () => klaviyoCardHtml() + klvSettingsCardHtml()).replace("__BOKO_KLAVIYO_SCRIPT__", () => klaviyoScript()), // BOKO IMPACT MODULE
     );
 });
 
@@ -778,6 +779,7 @@ mountKlaviyo(app, {
 mountKlaviyoFeeds(app); // BOKO KLAVIYO FEEDS
 mountKlaviyoImpact(app, { shopFromToken: shopFromSessionToken }); // BOKO KLAVIYO CARD
 mountKlaviyoSync(app); // BOKO KLAVIYO SYNC
+mountKlaviyoSettings(app, { shopFromToken: shopFromSessionToken }); // BOKO KLAVIYO SETTINGS
 
 
 // ---------- Uninstall webhook (HMAC verified) — removes only this shop's token ----------

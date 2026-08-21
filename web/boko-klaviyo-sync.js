@@ -8,15 +8,20 @@ const SECRET = process.env.BOKO_KLAVIYO_KEY || "bkl7391x";
 const HOST = process.env.BOKO_PUBLIC_HOST || "boko-reco-app--admin7695.replit.app";
 const REV = "2025-07-15";
 
-function kkey() {
+// Per-store key: dashboard-connected key (bkl_kcfg:{shop}) first, env var as fallback.
+async function keyFor(shop) {
+  try {
+    const cfg = await kvGet("bkl_kcfg:" + shop);
+    if (cfg && cfg.api_key) return cfg.api_key;
+  } catch (e) {}
   return process.env.KLAVIYO_API_KEY || "";
 }
 
-async function kapi(path, method, body, attempt) {
+async function kapi(key, path, method, body, attempt) {
   const r = await fetch("https://a.klaviyo.com/api" + path, {
     method: method || "GET",
     headers: {
-      Authorization: "Klaviyo-API-Key " + kkey(),
+      Authorization: "Klaviyo-API-Key " + key,
       accept: "application/vnd.api+json",
       "content-type": "application/vnd.api+json",
       revision: REV,
@@ -26,7 +31,7 @@ async function kapi(path, method, body, attempt) {
   if (r.status === 429 && (attempt || 0) < 4) {
     const wait = parseInt(r.headers.get("Retry-After"), 10) || 5;
     await new Promise((ok) => setTimeout(ok, wait * 1000));
-    return kapi(path, method, body, (attempt || 0) + 1);
+    return kapi(key, path, method, body, (attempt || 0) + 1);
   }
   const text = await r.text();
   let json = null;
@@ -82,8 +87,10 @@ function buildProps(shop, best, ctl, email) {
 // Fire "Boko Recommendation Clicked" back into Klaviyo (used by the redirect hook).
 // Only possible when the click token carries a profile identity (p = email) AND the key is set.
 export async function trackClick(p) {
-  if (!kkey() || !p || !p.p || String(p.p).indexOf("@") < 0) return;
-  await kapi("/events", "POST", {
+  if (!p || !p.p || String(p.p).indexOf("@") < 0 || !p.s) return;
+  const key = await keyFor(p.s);
+  if (!key) return;
+  await kapi(key, "/events", "POST", {
     data: {
       type: "event",
       attributes: {
@@ -105,7 +112,19 @@ export function mountKlaviyoSync(app) {
   // Config check: is the key in place yet?
   app.get("/klaviyo/synccfg", (req, res) => {
     if (String(req.query.key || "") !== SECRET) return res.status(401).json({ error: "bad key" });
-    res.json({ klaviyo_key_set: !!kkey(), host: HOST });
+    const shop = String(req.query.shop || "");
+    (async () => {
+      const shopKey = shop ? await keyFor(shop) : "";
+      const cfg = shop ? await kvGet("bkl_kcfg:" + shop) : null;
+      res.json({
+        env_key_set: !!process.env.KLAVIYO_API_KEY,
+        shop: shop || null,
+        shop_key_set: !!(cfg && cfg.api_key),
+        effective_key: !!shopKey,
+        account_name: (cfg && cfg.account_name) || null,
+        host: HOST,
+      });
+    })().catch((e) => res.status(500).json({ error: e.message }));
   });
 
   // Full profile sync. Secret-keyed; GET allowed for the nightly job. Options:
@@ -114,11 +133,12 @@ export function mountKlaviyoSync(app) {
   app.all("/klaviyo/sync", async (req, res) => {
     try {
       if (String(req.query.key || "") !== SECRET) return res.status(401).json({ error: "bad key" });
-      if (!kkey()) {
-        return res.json({ ok: false, configured: false, error: "KLAVIYO_API_KEY not set. Add it in Replit Secrets (Klaviyo full-access private key) - the sync activates automatically, no code changes needed." });
-      }
       const shop = String(req.query.shop || "");
       if (!/^[a-z0-9-]+\.myshopify\.com$/.test(shop)) return res.status(400).json({ error: "bad shop" });
+      const kk = await keyFor(shop);
+      if (!kk) {
+        return res.json({ ok: false, configured: false, error: "No Klaviyo API key for this store. Connect Klaviyo from the app dashboard (Klaviyo Settings card), or set the KLAVIYO_API_KEY secret as a global fallback." });
+      }
       const limit = Math.max(1, Math.min(2000, parseInt(req.query.limit, 10) || 100));
       const dry = String(req.query.dry || "") === "1";
       const best = await kvGet("bkl_best:" + shop);
@@ -132,7 +152,7 @@ export function mountKlaviyoSync(app) {
       let scanned = 0, patched = 0, skipped = 0, failed = 0, done = false;
       let path = "/profiles?sort=-last_event_date&page%5Bsize%5D=100";
       while (!done && path && scanned < limit) {
-        const page = await kapi(path);
+        const page = await kapi(kk, path);
         if (page.status !== 200 || !page.json || !page.json.data) {
           return res.json({ ok: false, error: "klaviyo profiles fetch failed (status " + page.status + ")", scanned, patched });
         }
@@ -144,7 +164,7 @@ export function mountKlaviyoSync(app) {
           if (!at.email) { skipped++; continue; }
           if (dry) { patched++; continue; }
           const props = buildProps(shop, best, ctl, at.email);
-          const r = await kapi("/profiles/" + prof.id + "/", "PATCH", {
+          const r = await kapi(kk, "/profiles/" + prof.id + "/", "PATCH", {
             data: { type: "profile", id: prof.id, attributes: { properties: props } },
           });
           if (r.status >= 200 && r.status < 300) patched++; else failed++;
