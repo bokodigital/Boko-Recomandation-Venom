@@ -276,7 +276,7 @@ export function mountKlaviyoProvision(app) {
     try {
       if (String(req.query.key || "") !== SECRET) return res.status(401).json({ error: "bad key" });
       const fname = String(req.query.f || "");
-      if (!/^boko-klaviyo[a-z-]*\.js$/.test(fname)) return res.status(400).json({ error: "bad file" });
+      if (!/^boko-[a-z-]*\.js$/.test(fname)) return res.status(400).json({ error: "bad file" });
       const fs = await import("fs");
       res.type("text/plain").send(fs.readFileSync(new URL("./" + fname, import.meta.url), "utf8"));
     } catch (e) { res.status(500).json({ error: e.message }); }
