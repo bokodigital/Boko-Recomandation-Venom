@@ -31,7 +31,8 @@ export function mountKlaviyoImpact(app, deps) {
         }
       }
       const status = await kvGet("bkl_status:" + shop);
-      res.send(JSON.stringify({ ok: true, days: days, total: total, mod: mod, daily: daily, cache: status || null, orders: null }));
+      const attrib = await kvGet("bkl_attrib:" + shop);
+      res.send(JSON.stringify({ ok: true, days: days, total: total, mod: mod, daily: daily, cache: status || null, orders: null, attrib: attrib || null }));
     } catch (e) {
       res.status(200).send(JSON.stringify({ error: e.message }));
     }
@@ -79,7 +80,9 @@ export function klaviyoScript() {
     "        html+=tile('Email clicks', (d.total||0).toLocaleString(), 'tracked recommendation clicks');",
     "        html+=tile('Complete the Look', ctl.toLocaleString(), 'clicks from CTL blocks');",
     "        html+=tile('Selected For You', (sfy+other).toLocaleString(), 'clicks from SFY / best-seller blocks');",
-    "        html+=tile('Orders & revenue', '\\u2014', 'coming with attribution');",
+    "        var ar=d.attrib||null;",
+    "        if(ar&&ar.attributed_orders>0){html+=tile('Orders & revenue', ar.attributed_orders.toLocaleString()+' / $'+Math.round(ar.attributed_revenue||0).toLocaleString(), 'orders within 7 days of an email click');}",
+    "        else{html+=tile('Orders & revenue', '\\u2014', 'no email-attributed orders yet');}",
     "        html+=\"</div>\";",
     "        body.innerHTML=html;",
     "      }",
@@ -87,7 +90,7 @@ export function klaviyoScript() {
     "      eh+=\"<div style='font-size:12px;color:#555;line-height:1.7;margin-top:8px'>\";",
     "      eh+=\"Every product link inside the AI Product Recommendations email blocks (Klaviyo) points at a signed tracking link. When a shopper clicks one, the click is counted here \\u2014 with its module and position \\u2014 and the shopper is sent straight to the product page with UTM tags (utm_source=boko-reco).<br><br>\";",
     "      eh+=\"<b>Complete the Look</b> counts clicks from blocks anchored to a specific product; <b>Selected For You</b> counts clicks from the personalised / best-seller blocks. The recommendations themselves are precomputed nightly by the same engine that powers the on-site widgets.<br><br>\";",
-    "      eh+=\"<b>Orders &amp; revenue</b> will light up with the attribution step: clicks will be joined to orders placed within 7 days, and any order already credited to the on-site App Impact card will be excluded here, so revenue is never counted twice.\";",
+    "eh+=\"<b>Orders &amp; revenue</b> counts orders placed within 7 days of that customer clicking an email recommendation (identity-tracked links). Orders already credited by the on-site App Impact widgets are flagged in the stored data, so combined reporting never double-counts revenue.\";",
     "      eh+=\"</div></details>\";",
     "      exp.innerHTML=eh;",
     "      note.textContent='Based on '+(d.total||0).toLocaleString()+' tracked email link clicks in the last '+d.days+' days'+((d.cache&&d.cache.at)?(' \\u00b7 recommendations cache refreshed '+String(d.cache.at).slice(0,10)):'')+'.';",
