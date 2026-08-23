@@ -95,7 +95,7 @@ const BLOCK_SFY_HTML = [
 // ---- Provisioning steps ----
 async function ensureFeeds(key, shop, log) {
   const out = {};
-  const list = await kapi(key, "/web-feeds?page%5Bsize%5D=100");
+  const list = await kapi(key, "/web-feeds");
   const have = {};
   if (list.status === 200 && list.json && list.json.data) {
     for (const d of list.json.data) have[(d.attributes && d.attributes.name) || ""] = d.id;
@@ -118,6 +118,7 @@ async function ensureFeeds(key, shop, log) {
       log.push("feed " + name + " created (" + r.json.data.id + ")");
       return { id: r.json.data.id, created: true, url: url };
     }
+    if (r.status === 409) { log.push("feed " + name + " exists (409, adopted)"); return { adopted: true }; }
     log.push("feed " + name + " create failed status " + r.status + " " + JSON.stringify((r.json && r.json.errors) || "").slice(0, 160));
     return null;
   }
