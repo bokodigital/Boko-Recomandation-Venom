@@ -29,7 +29,8 @@ import { mountKlaviyoFeeds } from "./boko-klaviyo-feeds.js";
 import { mountKlaviyoImpact, klaviyoCardHtml, klaviyoScript } from "./boko-klaviyo-card.js";
 import { mountKlaviyoSync } from "./boko-klaviyo-sync.js";
 import { mountKlaviyoSettings, klvSettingsCardHtml } from "./boko-klaviyo-settings.js"; // BOKO KLAVIYO SETTINGS - per-store connection
-import { mountKlaviyoAttrib } from "./boko-klaviyo-attrib.js"; // BOKO KLAVIYO ATTRIB - Step 6 order/revenue attribution // BOKO KLAVIYO SYNC - Step 4 (dormant until KLAVIYO_API_KEY set) // BOKO KLAVIYO CARD - Step 7 (self-contained; safe to remove) // BOKO KLAVIYO FEEDS - Step 3 (self-contained; safe to remove) // BOKO KLAVIYO MODULE - Step 1 cache (self-contained; safe to remove) // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
+import { mountKlaviyoAttrib } from "./boko-klaviyo-attrib.js"; // BOKO KLAVIYO ATTRIB - Step 6 order/revenue attribution
+import { mountKlaviyoProvision } from "./boko-klaviyo-provision.js"; // BOKO KLAVIYO PROVISION - Step 8 auto-setup on connect // BOKO KLAVIYO SYNC - Step 4 (dormant until KLAVIYO_API_KEY set) // BOKO KLAVIYO CARD - Step 7 (self-contained; safe to remove) // BOKO KLAVIYO FEEDS - Step 3 (self-contained; safe to remove) // BOKO KLAVIYO MODULE - Step 1 cache (self-contained; safe to remove) // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const API_KEY = process.env.SHOPIFY_API_KEY || "";
@@ -779,9 +780,10 @@ mountKlaviyo(app, {
 }); // BOKO KLAVIYO MODULE
 mountKlaviyoFeeds(app); // BOKO KLAVIYO FEEDS
 mountKlaviyoImpact(app, { shopFromToken: shopFromSessionToken }); // BOKO KLAVIYO CARD
-mountKlaviyoSync(app); // BOKO KLAVIYO SYNC
+mountKlaviyoSync(app, { getToken, gql }); // BOKO KLAVIYO SYNC v3 (per-customer picks)
 mountKlaviyoSettings(app, { shopFromToken: shopFromSessionToken }); // BOKO KLAVIYO SETTINGS
 mountKlaviyoAttrib(app, { getToken, gql }); // BOKO KLAVIYO ATTRIB
+mountKlaviyoProvision(app); // BOKO KLAVIYO PROVISION
 
 
 // ---------- Uninstall webhook (HMAC verified) — removes only this shop's token ----------

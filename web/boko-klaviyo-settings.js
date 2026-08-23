@@ -45,6 +45,7 @@ export function mountKlaviyoSettings(app, deps) {
         masked: cfg && cfg.api_key ? mask(cfg.api_key) : null,
         set_at: (cfg && cfg.set_at) || null,
         env_fallback: !!process.env.KLAVIYO_API_KEY,
+        prov: (await kvGet("bkl_prov:" + shop)) || null,
       });
     } catch (e) {
       res.status(500).json({ error: e.message });
@@ -78,6 +79,7 @@ export function mountKlaviyoSettings(app, deps) {
         account_name: name,
         set_at: new Date().toISOString(),
       });
+      try { if (globalThis.__bklProvisionHook) globalThis.__bklProvisionHook(shop); } catch (e) {} // BOKO KLAVIYO PROVISION auto-setup
       res.json({ ok: true, connected: true, account_name: name, account_id: a.id, masked: mask(apiKey) });
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message });
@@ -111,7 +113,8 @@ export function klvSettingsCardHtml() {
     "return \"<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center'>\"+" +
     "\"<div style='flex:1 1 260px;font-size:13px'>Connected to <b>\"+esc(d.account_name||'Klaviyo')+\"</b> <span style='color:#8a8a8a'>(\"+esc(d.masked||'')+\")</span></div>\"+" +
     "\"<button id='bkKsetOff' style='background:#fff;color:#111;border:1px solid #d9d9d9;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer'>Disconnect</button>\"+" +
-    "\"</div>\";}" +
+    "\"</div>\"+bkProv(d);}" +
+    "function bkProv(d){var p=d&&d.prov;if(!p)return \"<div style='flex-basis:100%;font-size:12px;color:#8a8a8a;margin-top:6px'>Auto-setup runs right after connecting \u2014 refresh in a minute to see status.</div>\";function t(x){return x?'\u2713 done':'pending';}return \"<div style='flex-basis:100%;font-size:12px;color:#556655;margin-top:6px'>Auto-setup \u2014 web feeds: \"+t(p.feeds&&p.feeds.best)+\" \u00b7 email blocks: \"+t(p.blocks&&p.blocks.ctl&&p.blocks.sfy)+\" \u00b7 starter template: \"+t(p.template_id)+\"</div>\";}" +
     "function wire(d,err){" +
     "if(d&&d.connected){badge.textContent='Connected';badge.style.borderColor='#b7e2c0';badge.style.color='#1b7a35';body.innerHTML=connectedHtml(d);" +
     "var off=document.getElementById('bkKsetOff');if(off){off.onclick=async function(){off.disabled=true;off.textContent='Disconnecting\\u2026';var r=await post({disconnect:true});load();};}}" +

@@ -1,7 +1,9 @@
-// BOKO KLAVIYO SYNC — Step 4 design-complete build: full profile sync worker +
-// "Boko Recommendation Clicked" event client. Additive and self-contained; safe to remove.
-// IMPORTANT: code is complete but DORMANT until KLAVIYO_API_KEY is set in Replit Secrets.
-// Without the key every route answers with a clear "not configured" message and writes nothing.
+// BOKO KLAVIYO SYNC — v3: profile sync worker + click event client + PER-CUSTOMER picks.
+// v3 additions (Step 9): /klaviyo/custmap builds an email -> last-purchase map from Shopify
+// orders; the sync then personalises "Selected For You" per profile using the store's
+// Complete-the-Look pairing cache (bkl_ctl:{shop}:{productId}) for the customer's last
+// purchased product, falling back to best-sellers for customers with no known purchase.
+// Additive and self-contained; safe to remove (delete file + wired lines in server.js).
 import { kvGet, kvSet, mintToken } from "./boko-klaviyo.js";
 
 const SECRET = process.env.BOKO_KLAVIYO_KEY || "bkl7391x";
@@ -46,19 +48,22 @@ function tokUrl(shop, item, m, anchorId, idx, algo, email) {
   });
 }
 
-// Same property schema as the verified test batch, but with PER-PROFILE tracked links
-// (each URL carries the recipient's email, so clicks are identity-attributed).
-function buildProps(shop, best, ctl, email) {
+// Property schema is unchanged from v1 (so existing blocks/templates keep working),
+// but when `personal` is provided the SFY slots are the customer's own Complete-the-Look
+// picks (from their last purchase) instead of store-wide best-sellers.
+function buildProps(shop, best, ctl, email, personal) {
   const props = {
-    boko_algo: "v1",
-    boko_source: "sync-v1",
+    boko_algo: personal ? "v2-personal" : "v1",
+    boko_source: personal ? "sync-v2-personal" : "sync-v2-best",
     boko_updated_at: new Date().toISOString(),
   };
-  const bItems = (best && best.items) || [];
-  props.boko_sfy = bItems.slice(0, 4).map(function (it, i) {
+  const pAnchor = (personal && personal.anchor) || {};
+  const sfySrc = personal && (personal.items || []).length ? personal.items : ((best && best.items) || []);
+  const sfyAnchorId = personal ? (pAnchor.id || "") : "";
+  props.boko_sfy = sfySrc.slice(0, 4).map(function (it, i) {
     return {
       title: it.title, price: it.price, handle: it.handle, image: it.image,
-      url: tokUrl(shop, it, "sfy", "", i, best.algo, email),
+      url: tokUrl(shop, it, "sfy", sfyAnchorId, i, personal ? (personal.algo || "v2") : (best && best.algo), email),
     };
   });
   props.boko_sfy.forEach(function (it, i) {
@@ -67,14 +72,18 @@ function buildProps(shop, best, ctl, email) {
     props["boko_sfy_" + (i + 1) + "_image"] = it.image;
     props["boko_sfy_" + (i + 1) + "_url"] = it.url;
   });
-  if (ctl && (ctl.items || []).length) {
-    const a = ctl.anchor || {};
+  if (personal && (pAnchor.title || pAnchor.id)) {
+    props.boko_sfy_basis = "Because you bought " + (pAnchor.title || "a recent favourite");
+  }
+  const ctlSrc = personal && (personal.items || []).length ? personal : ctl;
+  if (ctlSrc && (ctlSrc.items || []).length) {
+    const a = ctlSrc.anchor || {};
     props.boko_ctl = {
       anchor_id: a.id || "", anchor_title: a.title || "", anchor_handle: a.handle || "",
-      items: ctl.items.slice(0, 4).map(function (it, i) {
+      items: ctlSrc.items.slice(0, 4).map(function (it, i) {
         return {
           title: it.title, price: it.price, handle: it.handle, image: it.image,
-          url: tokUrl(shop, it, "ctl", a.id, i, ctl.algo, email),
+          url: tokUrl(shop, it, "ctl", a.id, i, ctlSrc.algo, email),
         };
       }),
     };
@@ -85,7 +94,6 @@ function buildProps(shop, best, ctl, email) {
 }
 
 // Fire "Boko Recommendation Clicked" back into Klaviyo (used by the redirect hook).
-// Only possible when the click token carries a profile identity (p = email) AND the key is set.
 export async function trackClick(p) {
   if (!p || !p.p || String(p.p).indexOf("@") < 0 || !p.s) return;
   const key = await keyFor(p.s);
@@ -105,7 +113,12 @@ export async function trackClick(p) {
   });
 }
 
-export function mountKlaviyoSync(app) {
+const CMAP_ORDERS_Q = "query BkCm($n:Int!,$q:String,$after:String){ orders(first:$n, reverse:true, query:$q, after:$after){ pageInfo{hasNextPage endCursor} edges{ node{ createdAt email lineItems(first:10){edges{node{ product{ id } }}} } } } }";
+
+export function mountKlaviyoSync(app, deps) {
+  const getToken = deps && deps.getToken;
+  const gql = deps && deps.gql;
+
   // Redirect click hook — boko-klaviyo.js calls this after logging a click.
   globalThis.__bklClickHook = function (p) { trackClick(p).catch(function () {}); };
 
@@ -116,20 +129,68 @@ export function mountKlaviyoSync(app) {
     (async () => {
       const shopKey = shop ? await keyFor(shop) : "";
       const cfg = shop ? await kvGet("bkl_kcfg:" + shop) : null;
+      const cmap = shop ? await kvGet("bkl_cmap:" + shop) : null;
       res.json({
         env_key_set: !!process.env.KLAVIYO_API_KEY,
         shop: shop || null,
         shop_key_set: !!(cfg && cfg.api_key),
         effective_key: !!shopKey,
         account_name: (cfg && cfg.account_name) || null,
+        custmap_customers: (cmap && cmap.customers) || 0,
+        custmap_built_at: (cmap && cmap.built_at) || null,
         host: HOST,
       });
     })().catch((e) => res.status(500).json({ error: e.message }));
   });
 
+  // Build the customer purchase map: email -> product ids from their MOST RECENT order.
+  // Used by the sync to personalise Selected For You. Secret-keyed; GET ok for nightly job.
+  //   shop (required) · days=N (default 365, max 730) · pages=N (default 12, max 20)
+  app.all("/klaviyo/custmap", async (req, res) => {
+    try {
+      if (String(req.query.key || "") !== SECRET) return res.status(401).json({ error: "bad key" });
+      const shop = String(req.query.shop || "");
+      if (!/^[a-z0-9-]+\.myshopify\.com$/.test(shop)) return res.status(400).json({ error: "bad shop" });
+      if (!getToken || !gql) return res.json({ ok: false, error: "custmap not wired with getToken/gql" });
+      const token = await getToken(shop);
+      if (!token) return res.json({ ok: false, error: "no shop token" });
+      const days = Math.max(30, Math.min(730, parseInt(req.query.days, 10) || 365));
+      const maxPages = Math.max(1, Math.min(20, parseInt(req.query.pages, 10) || 12));
+      const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+      let after = null, pages = 0, scanned = 0;
+      const map = {};
+      while (pages < maxPages) {
+        const j = await gql(shop, token, CMAP_ORDERS_Q, { n: 100, q: "created_at:>=" + since, after: after });
+        if (j.errors) return res.json({ ok: false, error: "orders query failed: " + JSON.stringify(j.errors).slice(0, 200) });
+        const conn = j.data && j.data.orders;
+        const edges = (conn && conn.edges) || [];
+        for (const e of edges) {
+          const o = (e && e.node) || {};
+          scanned++;
+          const em = String(o.email || "").toLowerCase();
+          if (em.indexOf("@") < 0 || map[em]) continue; // orders come newest-first: first hit = latest order
+          const pids = [];
+          for (const le of ((o.lineItems && o.lineItems.edges) || [])) {
+            const pid = String((le.node && le.node.product && le.node.product.id) || "").split("/").pop();
+            if (pid && pids.indexOf(pid) < 0) pids.push(pid);
+            if (pids.length >= 3) break;
+          }
+          if (pids.length) map[em] = { t: o.createdAt, p: pids };
+        }
+        const pi = conn && conn.pageInfo;
+        pages++;
+        if (!pi || !pi.hasNextPage) break;
+        after = pi.endCursor;
+      }
+      const out = { shop: shop, days: days, orders_scanned: scanned, customers: Object.keys(map).length, built_at: new Date().toISOString(), map: map };
+      await kvSet("bkl_cmap:" + shop, out);
+      res.json({ ok: true, shop: shop, days: days, orders_scanned: scanned, customers: out.customers, built_at: out.built_at });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
   // Full profile sync. Secret-keyed; GET allowed for the nightly job. Options:
   //   shop (required) · limit=N (default 100, max 2000) · dry=1 (count, write nothing)
-  // Targets profiles active in the last 180 days (sorted by last activity, stops at cutoff).
+  // Targets profiles active in the last 180 days; skips profiles refreshed <20h ago.
   app.all("/klaviyo/sync", async (req, res) => {
     try {
       if (String(req.query.key || "") !== SECRET) return res.status(401).json({ error: "bad key" });
@@ -148,8 +209,12 @@ export function mountKlaviyoSync(app) {
       const status = await kvGet("bkl_status:" + shop);
       const ctlKey = String(req.query.anchor || "");
       const ctl = ctlKey ? await kvGet("bkl_ctl:" + shop + ":" + ctlKey) : null;
+      const cmapDoc = await kvGet("bkl_cmap:" + shop);
+      const cmap = (cmapDoc && cmapDoc.map) || {};
+      const ctlCache = {}; // per-run memo of bkl_ctl lookups
       const cutoff = new Date(Date.now() - 180 * 86400000).toISOString();
-      let scanned = 0, patched = 0, skipped = 0, failed = 0, done = false;
+      const freshMs = 20 * 3600 * 1000;
+      let scanned = 0, patched = 0, skipped = 0, failed = 0, personalized = 0, done = false;
       let path = "/profiles?sort=-updated&page%5Bsize%5D=100";
       while (!done && path && scanned < limit) {
         const page = await kapi(kk, path);
@@ -163,19 +228,31 @@ export function mountKlaviyoSync(app) {
           if (at.updated && at.updated < cutoff) { done = true; break; }
           if (at.last_event_date && at.last_event_date < cutoff) { skipped++; continue; }
           if (!at.email) { skipped++; continue; }
-          const pr = at.properties || {}; if (!dry && pr.boko_updated_at && pr.boko_updated_at > new Date(Date.now() - 20 * 3600000).toISOString()) { skipped++; continue; }
-          if (dry) { patched++; continue; }
-          const props = buildProps(shop, best, ctl, at.email);
+          const pr = at.properties || {};
+          if (!dry && pr.boko_updated_at && Date.now() - new Date(pr.boko_updated_at).getTime() < freshMs) { skipped++; continue; }
+          // Personal picks: customer's last purchase -> Complete-the-Look cache.
+          let personal = null;
+          const ent = cmap[String(at.email).toLowerCase()];
+          if (ent && ent.p) {
+            for (const pid of ent.p) {
+              if (!(pid in ctlCache)) ctlCache[pid] = await kvGet("bkl_ctl:" + shop + ":" + pid);
+              const c = ctlCache[pid];
+              if (c && (c.items || []).length) { personal = c; break; }
+            }
+          }
+          if (dry) { patched++; if (personal) personalized++; continue; }
+          const props = buildProps(shop, best, ctl, at.email, personal);
           const r = await kapi(kk, "/profiles/" + prof.id + "/", "PATCH", {
             data: { type: "profile", id: prof.id, attributes: { properties: props } },
           });
-          if (r.status >= 200 && r.status < 300) patched++; else failed++;
+          if (r.status >= 200 && r.status < 300) { patched++; if (personal) personalized++; } else failed++;
         }
         const next = page.json.links && page.json.links.next;
         path = next ? String(next).replace("https://a.klaviyo.com/api", "") : null;
       }
       const summary = {
-        shop, scanned, patched, skipped, failed, dry,
+        shop, scanned, patched, skipped, failed, personalized, dry,
+        custmap_customers: (cmapDoc && cmapDoc.customers) || 0,
         cache_at: (status && status.at) || null,
         at: new Date().toISOString(),
       };
