@@ -271,6 +271,16 @@ export function mountKlaviyoProvision(app) {
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
+  // Module source export (secret-keyed) - lets sibling apps pull the canonical files.
+  app.get("/klaviyo/src", async (req, res) => {
+    try {
+      if (String(req.query.key || "") !== SECRET) return res.status(401).json({ error: "bad key" });
+      const fname = String(req.query.f || "");
+      if (!/^boko-klaviyo[a-z-]*\.js$/.test(fname)) return res.status(400).json({ error: "bad file" });
+      const fs = await import("fs");
+      res.type("text/plain").send(fs.readFileSync("web/" + fname, "utf8"));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
   app.get("/klaviyo/provstatus", async (req, res) => {
     try {
       if (String(req.query.key || "") !== SECRET) return res.status(401).json({ error: "bad key" });
