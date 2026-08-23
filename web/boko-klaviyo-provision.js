@@ -199,7 +199,7 @@ function buildTemplateHtml(brand, shopUrl) {
 }
 
 async function ensureTemplate(key, shop, log) {
-  const list = await kapi(key, "/templates?page%5Bsize%5D=50&sort=-created");
+  const list = await kapi(key, "/templates?filter=equals(name,%22" + encodeURIComponent(TEMPLATE_NAME) + "%22)");
   if (list.status === 200 && list.json && list.json.data) {
     for (const d of list.json.data) {
       if (d.attributes && d.attributes.name === TEMPLATE_NAME) { log.push("template exists (" + d.id + ")"); return { id: d.id, adopted: true }; }
