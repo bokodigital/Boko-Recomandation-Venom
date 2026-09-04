@@ -381,6 +381,7 @@ export function mountImpact(app, deps) {
       const shop = req.get("X-Shopify-Shop-Domain");
       const order = JSON.parse(Buffer.isBuffer(req.body) ? req.body.toString("utf8") : String(req.body || "{}"));
       await recordOrder(shop, parseWebhookOrder(order));
+        try { if (globalThis.__bklPurchaseHook && order && order.email) { var _bl = (order.line_items) || [], _sl = {}, _pr = [], _v = 0, _n = 0; for (var _i = 0; _i < _bl.length; _i++) { var _s = attributedSlot(_bl[_i].properties || []); if (!_s) continue; _sl[_s] = 1; var _q = Number(_bl[_i].quantity || 1); _n += _q; _v += Number(_bl[_i].price || 0) * _q; _pr.push({ id: normId(_bl[_i].product_id || ""), title: _bl[_i].title || "" }); } if (_pr.length) { globalThis.__bklPurchaseHook({ s: shop, p: order.email, order_id: normId(order.id || order.order_number || ""), modules: Object.keys(_sl), products: _pr, count: _n, value: _v, currency: (order.currency || order.presentment_currency || "") }); } } } catch (e) {}
       res.status(200).send("ok");
     } catch (e) { res.status(200).send("ok"); }
   });

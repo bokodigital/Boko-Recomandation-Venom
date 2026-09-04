@@ -94,6 +94,29 @@ function buildProps(shop, best, ctl, email, personal) {
 }
 
 // Fire "Boko Recommendation Clicked" back into Klaviyo (used by the redirect hook).
+// Fire "Boko Recommended Purchase" into Klaviyo for widget-attributed orders (same path as trackClick).
+export async function trackPurchase(p) {
+  if (!p || !p.p || String(p.p).indexOf("@") < 0 || !p.s) return;
+  const key = await keyFor(p.s);
+  if (!key) return;
+  await kapi(key, "/events", "POST", {
+    data: {
+      type: "event",
+      attributes: {
+        properties: {
+          modules: p.modules || [], products: p.products || [],
+          item_count: p.count || 0, order_id: p.order_id || "",
+        },
+        metric: { data: { type: "metric", attributes: { name: "Boko Recommended Purchase" } } },
+        profile: { data: { type: "profile", attributes: { email: p.p } } },
+        value: Number(p.value || 0),
+        value_currency: p.currency || undefined,
+        unique_id: p.order_id ? ("boko-purchase-" + p.order_id) : undefined,
+      },
+    },
+  });
+}
+
 export async function trackClick(p) {
   if (!p || !p.p || String(p.p).indexOf("@") < 0 || !p.s) return;
   const key = await keyFor(p.s);
@@ -121,6 +144,7 @@ export function mountKlaviyoSync(app, deps) {
 
   // Redirect click hook — boko-klaviyo.js calls this after logging a click.
   globalThis.__bklClickHook = function (p) { trackClick(p).catch(function () {}); };
+  globalThis.__bklPurchaseHook = function (p) { trackPurchase(p).catch(function () {}); };
 
   // Config check: is the key in place yet?
   app.get("/klaviyo/synccfg", (req, res) => {
