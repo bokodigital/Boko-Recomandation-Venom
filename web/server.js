@@ -26,6 +26,7 @@ import { mountImpact, impactCardHtml, impactScript } from "./boko-impact.js";
 import { mountCr, crCardHtml, crScript } from "./boko-cr.js";
 import { mountKlaviyo } from "./boko-klaviyo.js";
 import { mountKlaviyoFeeds } from "./boko-klaviyo-feeds.js";
+import { mountKlaviyoCtlFeed } from "./boko-klaviyo-feed.js";
 import { mountKlaviyoImpact, klaviyoCardHtml, klaviyoScript } from "./boko-klaviyo-card.js";
 import { mountKlaviyoSync } from "./boko-klaviyo-sync.js";
 import { mountKlaviyoSettings, klvSettingsCardHtml } from "./boko-klaviyo-settings.js"; // BOKO KLAVIYO SETTINGS - per-store connection
@@ -778,7 +779,8 @@ mountKlaviyo(app, {
   recommend,
   complementaryPool: bokoComplementaryPool,
 }); // BOKO KLAVIYO MODULE
-mountKlaviyoFeeds(app); // BOKO KLAVIYO FEEDS
+mountKlaviyoFeeds(app);
+mountKlaviyoCtlFeed(app, { getToken, loadProducts, recommend, complementaryPool: bokoComplementaryPool }); // BOKO KLAVIYO FEEDS
 mountKlaviyoImpact(app, { shopFromToken: shopFromSessionToken }); // BOKO KLAVIYO CARD
 mountKlaviyoSync(app, { getToken, gql }); // BOKO KLAVIYO SYNC v3 (per-customer picks)
 mountKlaviyoSettings(app, { shopFromToken: shopFromSessionToken }); // BOKO KLAVIYO SETTINGS
