@@ -66,10 +66,12 @@ function attributedSlot(props) {
     if (k === "_boko_reco") reco = p.value;
     if (k === "_boko_source") source = p.value;
   }
-  if (reco === "pdp") return "pdp";
-  if (reco === "cart_drawer") return "cart_drawer";
-  if (source === "selected-for-you-page") return "sfy_page";
-  if (source === "selected-for-you-menu") return "sfy_menu";
+  var _r = (reco == null ? "" : String(reco)).toLowerCase();
+  var _s2 = (source == null ? "" : String(source)).toLowerCase();
+  if (_r.indexOf("pdp") === 0) return "pdp";
+  if (_r.indexOf("cart") === 0) return "cart_drawer";
+  if (_s2.indexOf("selected-for-you-menu") > -1) return "sfy_menu";
+  if (_s2.indexOf("selected-for-you") > -1) return "sfy_page";
   return null;
 }
 function isAttributedLine(props) { return attributedSlot(props) !== null; }

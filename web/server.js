@@ -364,10 +364,12 @@ async function loadStats(shop, token, days) {
         if (a.key === "_boko_reco") reco = a.value;
         if (a.key === "_boko_source") source = a.value;
       });
-      if (reco === "pdp") tag = "pdp";
-      else if (reco === "cart_drawer") tag = "cart_drawer";
-      else if (source === "selected-for-you-page") tag = "sfy_page";
-      else if (source === "selected-for-you-menu") tag = "sfy_menu";
+      var _r = (reco == null ? "" : String(reco)).toLowerCase();
+      var _s2 = (source == null ? "" : String(source)).toLowerCase();
+      if (_r.indexOf("pdp") === 0) tag = "pdp";
+      else if (_r.indexOf("cart") === 0) tag = "cart_drawer";
+      else if (_s2.indexOf("selected-for-you-menu") > -1) tag = "sfy_menu";
+      else if (_s2.indexOf("selected-for-you") > -1) tag = "sfy_page";
       if (tag && src[tag]) {
         const orig = li.originalTotalSet && li.originalTotalSet.shopMoney;
         const alloc = (li.discountAllocations || []).reduce(function (x, da) {
@@ -508,11 +510,11 @@ app.get("/funnel", async (req, res) => {
             const li = le.node;
             let s = null;
             (li.customAttributes || []).forEach((a) => {
-              if (
-                a.key === "_boko_reco" &&
-                (a.value === "pdp" || a.value === "cart_drawer")
-              )
-                s = a.value;
+              if (a.key === "_boko_reco") {
+                var _rv = String(a.value || "").toLowerCase();
+                if (_rv.indexOf("pdp") === 0) s = "pdp";
+                else if (_rv.indexOf("cart") === 0) s = "cart_drawer";
+              }
               if (
                 a.key === "_boko_source" &&
                 String(a.value).indexOf("selected-for-you") > -1
