@@ -370,6 +370,24 @@ export function mountImpact(app, deps) {
     } catch (e) { res.status(200).send(JSON.stringify({ ok: false, error: e.message })); }
   });
 
+  // Secret-gated: list this app's webhooks and (re)register orders/create -> our host.
+  app.get("/klaviyo/rehook", async (req, res) => {
+    res.set("Content-Type", "application/json");
+    try {
+      if (String(req.query.key || "") !== "bk7391x") { res.status(404).end(); return; }
+      const shop = String(req.query.shop || "");
+      if (!/^[a-z0-9-]+\.myshopify\.com$/.test(shop)) return res.status(400).send(JSON.stringify({ ok:false, error:"bad shop" }));
+      const token = await deps.getToken(shop);
+      if (!token) return res.status(200).send(JSON.stringify({ ok:false, error:"no shop token" }));
+      const cb = String(req.query.host || deps.host || "") + "/webhooks/orders_create";
+      const listQ = "query { webhookSubscriptions(first:50){ edges{ node{ id topic endpoint{ __typename ... on WebhookHttpEndpoint { callbackUrl } } } } } }";
+      const before = await deps.gql(shop, token, listQ, {});
+      const createQ = "mutation($u:URL!){ webhookSubscriptionCreate(topic: ORDERS_CREATE, webhookSubscription:{ callbackUrl:$u, format: JSON }){ userErrors{ field message } webhookSubscription{ id } } }";
+      const created = await deps.gql(shop, token, createQ, { u: cb });
+      res.status(200).send(JSON.stringify({ ok:true, host: deps.host || null, callbackUrl: cb, existing: (before && before.data && before.data.webhookSubscriptions && before.data.webhookSubscriptions.edges) || before, created: (created && (created.data || created.errors)) || created }));
+    } catch (e) { res.status(200).send(JSON.stringify({ ok:false, error: e.message })); }
+  });
+
   // orders/create webhook — raw body already provided by app.use("/webhooks", express.raw(...)).
   app.post("/webhooks/orders_create", async (req, res) => {
     try {
