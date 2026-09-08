@@ -106,6 +106,7 @@ export async function trackPurchase(p) {
         properties: {
           modules: p.modules || [], products: p.products || [],
           item_count: p.count || 0, order_id: p.order_id || "",
+          order_total: p.order_total || 0, order_count: p.order_count || 0,
         },
         metric: { data: { type: "metric", attributes: { name: "Boko Recommended Purchase" } } },
         profile: { data: { type: "profile", attributes: { email: p.p } } },
