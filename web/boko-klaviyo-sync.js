@@ -95,6 +95,35 @@ function buildProps(shop, best, ctl, email, personal) {
 
 // Fire "Boko Recommendation Clicked" back into Klaviyo (used by the redirect hook).
 // Fire "Boko Recommended Purchase" into Klaviyo for widget-attributed orders (same path as trackClick).
+// Set ONE profile's Selected-For-You recs immediately (at purchase time) so an
+// instant (no-delay) post-purchase flow has person.boko_sfy_* ready when it fires.
+// Prefers the purchased product's Complete-the-Look pairing (bkl_ctl), else best-sellers.
+export async function syncProfileRecos(shop, email, anchorIds) {
+  try {
+    if (!shop || !email || String(email).indexOf("@") < 0) return false;
+    const key = await keyFor(shop);
+    if (!key) return false;
+    const best = await kvGet("bkl_best:" + shop);
+    let personal = null;
+    const ids = Array.isArray(anchorIds) ? anchorIds : (anchorIds ? [anchorIds] : []);
+    for (const id of ids) {
+      const c = await kvGet("bkl_ctl:" + shop + ":" + String(id));
+      if (c && (c.items || []).length) { personal = c; break; }
+    }
+    if (!personal && !(best && (best.items || []).length)) return false;
+    const props = buildProps(shop, best, null, email, personal);
+    const filt = encodeURIComponent('equals(email,"' + email + '")');
+    const look = await kapi(key, "/profiles?filter=" + filt);
+    const pid = look && look.json && look.json.data && look.json.data[0] && look.json.data[0].id;
+    if (pid) {
+      const r = await kapi(key, "/profiles/" + pid + "/", "PATCH", { data: { type: "profile", id: pid, attributes: { properties: props } } });
+      return r.status >= 200 && r.status < 300;
+    }
+    const r2 = await kapi(key, "/profiles", "POST", { data: { type: "profile", attributes: { email: email, properties: props } } });
+    return r2.status >= 200 && r2.status < 300;
+  } catch (e) { return false; }
+}
+
 export async function trackPurchase(p) {
   if (!p || !p.p || String(p.p).indexOf("@") < 0 || !p.s) return;
   const key = await keyFor(p.s);
@@ -146,6 +175,7 @@ export function mountKlaviyoSync(app, deps) {
   // Redirect click hook — boko-klaviyo.js calls this after logging a click.
   globalThis.__bklClickHook = function (p) { trackClick(p).catch(function () {}); };
   globalThis.__bklPurchaseHook = function (p) { trackPurchase(p).catch(function () {}); };
+  globalThis.__bklProfileRecoHook = function (shop, email, anchorIds) { return syncProfileRecos(shop, email, anchorIds).catch(function () { return false; }); };
 
   // Config check: is the key in place yet?
   app.get("/klaviyo/synccfg", (req, res) => {
