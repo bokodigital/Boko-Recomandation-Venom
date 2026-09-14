@@ -110,6 +110,17 @@ export async function syncProfileRecos(shop, email, anchorIds) {
       const c = await kvGet("bkl_ctl:" + shop + ":" + String(id));
       if (c && (c.items || []).length) { personal = c; break; }
     }
+    // Real-time fallback: if the purchased product has no cached pairing yet
+    // (e.g. a brand-new product), compute its Complete-the-Look pairing LIVE now
+    // so the email reflects the ACTUAL purchased product instead of best-sellers.
+    if (!personal && globalThis.__bklCtlLive) {
+      for (const id of ids) {
+        try {
+          const live = await globalThis.__bklCtlLive(shop, String(id), 4);
+          if (live && (live.items || []).length) { personal = live; break; }
+        } catch (e) {}
+      }
+    }
     if (!personal && !(best && (best.items || []).length)) return false;
     const props = buildProps(shop, best, null, email, personal);
     const filt = encodeURIComponent('equals(email,"' + email + '")');

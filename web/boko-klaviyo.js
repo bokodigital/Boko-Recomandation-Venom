@@ -80,6 +80,37 @@ function toItem(shop, p) {
 export function mountKlaviyo(app, deps) {
   const { getToken, loadProducts, recommend, complementaryPool } = deps;
 
+  // Live per-product "Complete the Look" pairing — computed ON DEMAND at purchase
+  // time so the post-purchase email always reflects the ACTUAL purchased product,
+  // even a brand-new product not yet in the nightly cache. Self-heals the cache by
+  // writing the freshly computed pairing back to bkl_ctl.
+  async function computeCtlLive(shop, anchorId, limit) {
+    try {
+      const want = String(anchorId == null ? "" : anchorId).split("/").pop().replace(/\D/g, "");
+      if (!want) return null;
+      const token = await getToken(shop);
+      if (!token) return null;
+      const products = await loadProducts(shop, token, 250);
+      if (!products || !products.length) return null;
+      const anchor = products.find((p) => pid(p) === want);
+      if (!anchor) return null;
+      const anum = pid(anchor);
+      const cp = complementaryPool(products, anchor.category, anum) || [];
+      if (!cp.length) return null;
+      const picks = await recommend({ products: cp, anchor: null, limit: limit || 4, useLLM: false });
+      if (!picks || !picks.length) return null;
+      const out = {
+        anchor: toItem(shop, anchor),
+        items: picks.slice(0, limit || 4).map((p) => toItem(shop, p)),
+        algo: "ctl-live",
+        at: new Date().toISOString(),
+      };
+      try { await kvSet("bkl_ctl:" + shop + ":" + anum, out); } catch (e) {}
+      return out;
+    } catch (e) { return null; }
+  }
+  globalThis.__bklCtlLive = function (shop, anchorId, limit) { return computeCtlLive(shop, anchorId, limit).catch(function () { return null; }); };
+
   async function computeShop(shop, opts) {
     const o = opts || {};
     const token = await getToken(shop);
