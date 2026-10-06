@@ -32,6 +32,7 @@ import { mountKlaviyoSync } from "./boko-klaviyo-sync.js";
 import { mountKlaviyoSettings, klvSettingsCardHtml } from "./boko-klaviyo-settings.js"; // BOKO KLAVIYO SETTINGS - per-store connection
 import { mountKlaviyoAttrib } from "./boko-klaviyo-attrib.js"; // BOKO KLAVIYO ATTRIB - Step 6 order/revenue attribution
 import { mountKlaviyoProvision } from "./boko-klaviyo-provision.js"; // BOKO KLAVIYO PROVISION - Step 8 auto-setup on connect // BOKO KLAVIYO SYNC - Step 4 (dormant until KLAVIYO_API_KEY set) // BOKO KLAVIYO CARD - Step 7 (self-contained; safe to remove) // BOKO KLAVIYO FEEDS - Step 3 (self-contained; safe to remove) // BOKO KLAVIYO MODULE - Step 1 cache (self-contained; safe to remove) // BOKO IMPACT MODULE — Phase 1 AOV lift (self-contained; safe to remove)
+import { mountCtl2 } from "./boko-ctl2.js"; // BOKO CTL2 import (Complete the Look v2 + colour; safe to remove)
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const API_KEY = process.env.SHOPIFY_API_KEY || "";
@@ -789,6 +790,8 @@ mountKlaviyoSettings(app, { shopFromToken: shopFromSessionToken }); // BOKO KLAV
 mountKlaviyoAttrib(app, { getToken, gql }); // BOKO KLAVIYO ATTRIB
 mountKlaviyoProvision(app); // BOKO KLAVIYO PROVISION
 
+
+mountCtl2(app, { verifyProxy, getToken, gql, db, loadProducts, recommend, complementaryPool: bokoComplementaryPool }); // BOKO CTL2 mount
 
 // ---------- Uninstall webhook (HMAC verified) — removes only this shop's token ----------
 app.post("/webhooks/app_uninstalled", (req, res) => {
