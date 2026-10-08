@@ -369,11 +369,24 @@ function placeInOutfit(outfit, ev) {
   if (ev.metal && !outfit.metal) outfit.metal = ev.metal;
 }
 
+// BOKO CTL2-FIX4: a product with several colours is shown in the colour that suits the outfit best
+// (that variant's own photo + variant id), so the picture always matches the colour we checked.
+function bestEval(p, ctx, outfit) {
+  const opts = (p.colours && p.colours.length > 1) ? p.colours : null;
+  if (!opts) return { ev: evalColor(p, ctx, outfit), opt: (p.colours && p.colours[0]) || null };
+  let best = null;
+  for (const o of opts) {
+    const ev = evalColor(Object.assign({}, p, { color: o.color }), ctx, outfit);
+    if (!best || (best.ev.blocked && !ev.blocked) || (best.ev.blocked === ev.blocked && ev.score > best.ev.score)) best = { ev, opt: o };
+  }
+  return best;
+}
 function rankPool(pool, ctx, outfit, now) {
   return pool.map(p => {
-    const ev = evalColor(p, ctx, outfit);
+    const be = bestEval(p, ctx, outfit);
+    const ev = be.ev;
     return {
-      p, ev,
+      p, ev, opt: be.opt,
       n: isNewArrival(p, now) ? 1 : 0,
       b: isBestSeller(p) ? 1 : 0,
       d: ctx.anchorPrice != null && p.price != null ? Math.abs(p.price - ctx.anchorPrice) : Infinity,
@@ -392,12 +405,12 @@ function reasonFor(x) {
 function formatItem(x, slotName, targets) {
   const p = x.p;
   return {
-    id: p.gid || ("gid://shopify/Product/" + p.id), handle: p.handle, variantId: p.variantId, available: true,
-    title: p.title, vendor: p.vendor || "", tags: p.tags || [], category: p.category || "", price: p.price, img: p.img || "",
+    id: p.gid || ("gid://shopify/Product/" + p.id), handle: p.handle, variantId: (x.opt && x.opt.variantId) || p.variantId, available: true,
+    title: p.title, vendor: p.vendor || "", tags: p.tags || [], category: p.category || "", price: (x.opt && x.opt.price) || p.price, img: (x.opt && x.opt.img) || p.img || "",
     createdAt: p.createdAt || null,
     slot: slotName, source_collection: (cols(p).find(h => targets.includes(h))) || cols(p)[0] || "",
     reason: reasonFor(x),
-    color: p.color || "", color_family: x.ev.ci && !x.ev.ci.missing ? x.ev.ci.family : "unknown",
+    color: (x.opt && x.opt.color) || p.color || "", color_family: x.ev.ci && !x.ev.ci.missing ? x.ev.ci.family : "unknown",
     color_rule: x.ev.blocked ? "clash" : x.ev.rule, color_note: x.ev.why || (x.ev.missing ? "missing_colour_qa" : undefined),
   };
 }
@@ -451,7 +464,7 @@ function completeTheLook(catalog, anchor, opts = {}) {
         const x = b.q.shift(); if (!x) continue;
         added = true;
         // BOKO CTL2-FIX2: the whole rail follows the outfit colour rules (re-check against what is already shown)
-        x.ev = evalColor(x.p, ctx, outfit);
+        { const be = bestEval(x.p, ctx, outfit); x.ev = be.ev; x.opt = be.opt; }
         if (x.ev.blocked) { blocked.push(x); continue; }
         placeInOutfit(outfit, x.ev);
         used.add(String(x.p.id)); out.push(formatItem(x, b.s.name, b.targets));
@@ -492,6 +505,7 @@ function compactProduct(n, colls, variants) {
     img: (n.featuredImage && n.featuredImage.url) || "", variantId: numId(first.id), available: true,
     color: shownColour(n, variants, first, opt) || colorFromTitle(n.title), sizes, // BOKO CTL2-FIX3
     pattern: TITLE_PRINT_RE.test(String(n.title || "").toLowerCase()),
+    colours: (() => { const seen = new Set(), out = []; for (const v of av) { const c = opt(v, COLOR_OPT).toLowerCase(); if (!c || seen.has(c)) continue; seen.add(c); out.push({ color: c, variantId: numId(v.id), img: (v.image && v.image.url) || "", price: parseFloat(v.price) || 0 }); } return out; })(),
   };
 }
 
