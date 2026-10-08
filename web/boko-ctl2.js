@@ -490,15 +490,27 @@ function compactProduct(n, colls, variants) {
     id: numId(n.id), gid: n.id, handle: n.handle, title: n.title, vendor: n.vendor || "", category: pt, tags, tagsLc,
     cols: colls, createdAt: n.publishedAt || n.createdAt, price: parseFloat(first.price) || 0,
     img: (n.featuredImage && n.featuredImage.url) || "", variantId: numId(first.id), available: true,
-    color: opt(first, COLOR_OPT).toLowerCase() || colorFromTitle(n.title), sizes,
+    color: shownColour(n, variants, first, opt) || colorFromTitle(n.title), sizes, // BOKO CTL2-FIX3
     pattern: TITLE_PRINT_RE.test(String(n.title || "").toLowerCase()),
   };
+}
+
+// BOKO CTL2-FIX3: judge a product by the colour its PHOTO shows (the variant whose image is the
+// featured image), not just the first available variant - e.g. Cotton Culottes photo is red.
+function shownColour(n, variants, first, opt) {
+  const strip = u => String(u || "").split("?")[0];
+  const fi = strip(n.featuredImage && n.featuredImage.url);
+  if (fi) {
+    const hit = variants.find(v => v.image && strip(v.image.url) === fi && opt(v, COLOR_OPT));
+    if (hit) return opt(hit, COLOR_OPT).toLowerCase();
+  }
+  return opt(first, COLOR_OPT).toLowerCase();
 }
 
 const BULK_QUERY = `{ products(query: "status:active") { edges { node {
   id handle title vendor productType tags createdAt publishedAt isGiftCard featuredImage { url }
   collections { edges { node { id handle } } }
-  variants { edges { node { id price availableForSale selectedOptions { name value } } } }
+  variants { edges { node { id price availableForSale image { url } selectedOptions { name value } } } }
 } } } }`;
 
 function parseJsonl(text) {
@@ -519,7 +531,7 @@ function parseJsonl(text) {
 const ANCHOR_QUERY = `query($id: ID!) { product(id: $id) {
   id handle title vendor productType tags createdAt publishedAt isGiftCard featuredImage { url }
   collections(first: 30) { nodes { handle } }
-  variants(first: 60) { nodes { id price availableForSale selectedOptions { name value } } }
+  variants(first: 60) { nodes { id price availableForSale image { url } selectedOptions { name value } } }
 } }`;
 
 export function mountCtl2(app, { verifyProxy, getToken, gql, db, loadProducts, recommend, complementaryPool }) {
