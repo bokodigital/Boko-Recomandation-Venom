@@ -710,6 +710,8 @@ export function mountCtl2(app, { verifyProxy, getToken, gql, db, loadProducts, r
           return res.status(200).send(JSON.stringify(body));
         }
       }
+      // BOKO P7: stylist engine never falls back to unrelated picks (catalogue still loading / product unknown) - the section hides instead
+      if (v3) return res.status(200).send(JSON.stringify({ engine: "ctl3", items: [], ...(debug ? { meta: { reason: !cat ? "catalogue building" : "anchor not found", op: ops[shop] || null } } : {}) }));
       const items = await v1Fallback(shop, token, q, limit);
       const body = { engine: "v1-fallback", items };
       if (debug) body.meta = { reason: !cat ? "catalogue building" : !anchor ? "anchor not found" : "no v2 results", op: ops[shop] || null, catalog_size: cat ? cat.products.length : 0 };

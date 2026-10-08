@@ -223,7 +223,7 @@ function kindOf(p) {
     if (any(/\b(hat|beanie|cap|beret)\b/) || c.includes("headwear")) return "hat";
     if (any(/\b(shoe|shoes|slides?|sandals?|sandle|wedge|heel|heels|boots?|loafer|sneaker|mule|flats)\b/) || c.includes("shoes")) return "shoes";
   }
-  if (any(/\bset\b/) || /top and pant/.test(pt)) return "set";
+  if (any(/\bset\b/) || /top and pant/.test(pt) || tAny(/\btop (and )?pants?\b/)) return "set"; // BOKO P7: "TOP / PANT" two-piece
   if (any(/\b(jumpsuit|playsuit|romper|overall)\b/) || c.includes("jumpsuits")) return "jumpsuit";
   if (any(/\b(dress|dresses|sundress|kaftan|caftan|dres)\b/) && !any(/\bdress(y)? (pant|shirt|top)\b/)) return "dress";
   if (any(/\b(blazer)\b/)) return "blazer";
@@ -354,7 +354,8 @@ function completeTheLook3(catalog, anchor, opts = {}) {
     if (String(p.id) === String(anchor.id) || (p.handle && p.handle === anchor.handle)) continue;
     const k = kindOf(p);
     if (k === "x" || k === "set") continue;
-    if (/\b(cape|poncho|kimono)\b/.test(norm(p.title))) { drop("statement_layer"); continue; } // statement pieces are not "go-with" items
+    if (/\b(cape|poncho|kimono)\b/.test(norm(p.title))) { drop("statement_layer"); continue; }
+    if (/\b(lounge|loungewear|pyjama|pajama)\b/.test(norm(p.title))) { drop("lounge"); continue; } // BOKO P7: loungewear is not an outfit piece // statement pieces are not "go-with" items
     if (stem(p.title) === aStem) { drop("same_style"); continue; }
     if (curvy && APPAREL.has(k) && !size12(p)) { drop("size"); continue; }
     const s = seasonOf(p, k);
