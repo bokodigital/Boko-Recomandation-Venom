@@ -596,6 +596,26 @@ export function mountCtl2(app, { verifyProxy, getToken, gql, db, loadProducts, r
     return items || [];
   }
 
+  // BOKO CTL2-COLOR: colour-aware Complete the Look picks for Klaviyo (sync, post-purchase, feed).
+  globalThis.__ctl2Pick = async function (shop, productId, limit, excludeIds) {
+    try {
+      const anum = String(productId || "").split("/").pop().replace(/\D/g, "");
+      if (!shop || !anum) return null;
+      const token = await getToken(shop);
+      if (!token) return null;
+      const cat = await getCatalog(shop, token, 8000);
+      if (!cat) return null;
+      const anchor = cat.byId.get(anum) || await fetchAnchor(shop, token, anum);
+      if (!anchor) return null;
+      const ex = new Set((excludeIds || []).map(x => String(x).split("/").pop().replace(/\D/g, "")));
+      const pool = ex.size ? cat.products.filter(p => !ex.has(String(p.id))) : cat.products;
+      const r = completeTheLook(pool, anchor, { total: Math.max(1, Math.min(8, limit || 4)) });
+      if (!r.items.length) return null;
+      const shape = it => ({ id: String(it.id).split("/").pop(), title: it.title, handle: it.handle, price: it.price, image: it.img || "", url: "https://" + shop + "/products/" + it.handle });
+      return { anchor: { id: anum, title: anchor.title || "", handle: anchor.handle || "", price: anchor.price || 0, image: anchor.img || "" }, items: r.items.map(shape), algo: "ctl2-color", at: new Date().toISOString() };
+    } catch (e) { return null; }
+  };
+
   app.get("/proxy/ctl", async (req, res) => {
     res.set("Content-Type", "application/json");
     res.set("Cache-Control", "no-store");

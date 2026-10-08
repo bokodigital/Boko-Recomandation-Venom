@@ -106,7 +106,11 @@ export async function syncProfileRecos(shop, email, anchorIds) {
     const best = await kvGet("bkl_best:" + shop);
     let personal = null;
     const ids = Array.isArray(anchorIds) ? anchorIds : (anchorIds ? [anchorIds] : []);
-    for (const id of ids) {
+    // BOKO CTL2-COLOR: recommendations follow the FIRST item of the order, with colour rules.
+    if (ids.length && globalThis.__ctl2Pick) {
+      try { const c2 = await globalThis.__ctl2Pick(shop, String(ids[0]), 4, ids); if (c2 && (c2.items || []).length) personal = c2; } catch (e) {}
+    }
+    for (const id of (personal ? [] : ids)) {
       const c = await kvGet("bkl_ctl:" + shop + ":" + String(id));
       if (c && (c.items || []).length) { personal = c; break; }
     }
@@ -299,7 +303,12 @@ export function mountKlaviyoSync(app, deps) {
           // Personal picks: customer's last purchase -> Complete-the-Look cache.
           let personal = null;
           const ent = cmap[String(at.email).toLowerCase()];
-          if (ent && ent.p) {
+          if (ent && ent.p && ent.p.length && globalThis.__ctl2Pick) {
+            const k2 = "c2:" + ent.p[0];
+            if (!(k2 in ctlCache)) ctlCache[k2] = await globalThis.__ctl2Pick(shop, String(ent.p[0]), 4, ent.p);
+            if (ctlCache[k2] && (ctlCache[k2].items || []).length) personal = ctlCache[k2];
+          }
+          if (!personal && ent && ent.p) {
             for (const pid of ent.p) {
               if (!(pid in ctlCache)) ctlCache[pid] = await kvGet("bkl_ctl:" + shop + ":" + pid);
               const c = ctlCache[pid];

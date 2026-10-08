@@ -88,6 +88,10 @@ export function mountKlaviyo(app, deps) {
     try {
       const want = String(anchorId == null ? "" : anchorId).split("/").pop().replace(/\D/g, "");
       if (!want) return null;
+      if (globalThis.__ctl2Pick) { // BOKO CTL2-COLOR
+        const c2 = await globalThis.__ctl2Pick(shop, want, limit || 4);
+        if (c2 && (c2.items || []).length) { try { await kvSet("bkl_ctl:" + shop + ":" + want, c2); } catch (e) {} return c2; }
+      }
       const token = await getToken(shop);
       if (!token) return null;
       const products = await loadProducts(shop, token, 250);

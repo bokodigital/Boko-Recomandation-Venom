@@ -88,7 +88,11 @@ export function mountKlaviyoCtlFeed(app, deps) {
 
       let source = "", anchor = null, items = [], algo = "ctl-v1-complement";
 
-      if (productId) {
+      if (productId && globalThis.__ctl2Pick) { // BOKO CTL2-COLOR
+        const c2 = await globalThis.__ctl2Pick(shop, productId, limit).catch(() => null);
+        if (c2 && (c2.items || []).length) { source = "ctl2"; algo = c2.algo; anchor = c2.anchor; items = c2.items.slice(0, limit); }
+      }
+      if (!items.length && productId) {
         const ctl = await kvGet("bkl_ctl:" + shop + ":" + productId);
         if (ctl && (ctl.items || []).length) {
           source = "cache"; algo = ctl.algo || algo; anchor = ctl.anchor || null; items = ctl.items.slice(0, limit);
