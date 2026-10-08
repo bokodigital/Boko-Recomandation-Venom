@@ -167,9 +167,9 @@ const T = {
   ],
   topStd: [
     { name: "bottom", targets: ["skirts", "denim", "pants"] },
-    { name: "accessory", targets: ["jewelry", "bags"] },
+    { name: "jewelry", targets: ["jewelry"] },
     { name: "jacket", targets: ["coats-and-jackets", "womens-denim-jackets"] },
-    { name: "layer", targets: ["knits", "cardigans", "curvy-knits"] },
+    { name: "bag", targets: ["bags"] }, // BOKO CTL2-FIX2: no knit/cardigan layered over a blouse or top
   ],
   knitStd: [
     { name: "bottom", targets: ["skirts", "denim", "pants"] },
@@ -331,7 +331,7 @@ function allowed(p, ctx) {
 function newOutfit(ctx) {
   const fam = new Set();
   if (ctx.color && !isNeutralish(ctx.color) && ctx.color.family !== "multi") fam.add(ctx.color.family);
-  return { families: fam, accents: 0, metal: null, prints: ctx.color && ctx.color.print ? 1 : 0 };
+  return { families: fam, accents: 0, tonal: 0, metal: null, prints: ctx.color && ctx.color.print ? 1 : 0 };
 }
 // Evaluate a candidate in the context of the outfit -> {rule, score, blocked, why}
 function evalColor(p, ctx, outfit) {
@@ -341,11 +341,16 @@ function evalColor(p, ctx, outfit) {
   let blocked = r.rule === "clash", why = r.why || null;
   const isAccent = r.rule === "analogous" || r.rule === "complementary_accent" || r.rule === "weak";
   if (!blocked && isAccent && ci && !isNeutralish(ci)) {
-    if (ctx.anchorBold && outfit.accents >= 1) { blocked = true; why = "accent_cap"; }
+    // BOKO CTL2-FIX2: coloured product -> max 1 accent colour piece; neutral product -> max 2
+    if (outfit.accents >= ((ctx.color && !isNeutralish(ctx.color)) ? 1 : 2)) { blocked = true; why = "accent_cap"; }
+    // a coloured product never gets a second BOLD colour next to it (e.g. green blouse + red blazer)
+    if (ctx.color && !isNeutralish(ctx.color) && ci.bright === "B") { blocked = true; why = "second_bold_colour"; }
     const fams = new Set(outfit.families); if (ci.family !== "multi") fams.add(ci.family);
     if (fams.size > 3) { blocked = true; why = "three_colour_rule"; }
   }
   if (!blocked && ci && ci.print && outfit.prints >= 1) { blocked = true; why = "one_print_per_look"; }
+  // BOKO CTL2-FIX2: only ONE piece in the product's own colour (red dress -> red blazer OR red bag, not both)
+  if (!blocked && r.rule === "tonal" && !isNeutralish(ci) && (outfit.tonal || 0) >= 1) { blocked = true; why = "one_matching_colour_piece"; }
   const m = metalOf(p);
   if (!blocked && m && outfit.metal && m !== outfit.metal) { blocked = true; why = "mixed_metals"; }
   // metal preference follows anchor warmth (bonus inside the harmony score)
@@ -358,6 +363,7 @@ function evalColor(p, ctx, outfit) {
 }
 function placeInOutfit(outfit, ev) {
   if (ev.isAccent) outfit.accents++;
+  if (ev.rule === "tonal" && ev.ci && !isNeutralish(ev.ci)) outfit.tonal = (outfit.tonal || 0) + 1;
   if (ev.ci && !isNeutralish(ev.ci) && ev.ci.family !== "multi") outfit.families.add(ev.ci.family);
   if (ev.ci && ev.ci.print) outfit.prints++;
   if (ev.metal && !outfit.metal) outfit.metal = ev.metal;
@@ -443,7 +449,12 @@ function completeTheLook(catalog, anchor, opts = {}) {
       for (const b of bySlot) {
         if (out.length >= total) break;
         const x = b.q.shift(); if (!x) continue;
-        used.add(String(x.p.id)); out.push(formatItem(x, b.s.name, b.targets)); added = true;
+        added = true;
+        // BOKO CTL2-FIX2: the whole rail follows the outfit colour rules (re-check against what is already shown)
+        x.ev = evalColor(x.p, ctx, outfit);
+        if (x.ev.blocked) { blocked.push(x); continue; }
+        placeInOutfit(outfit, x.ev);
+        used.add(String(x.p.id)); out.push(formatItem(x, b.s.name, b.targets));
       }
     }
     // clash/over-cap items only to avoid a near-empty rail (spec: colour never empties, but clashes are a last resort)
