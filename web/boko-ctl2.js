@@ -565,7 +565,7 @@ const ANCHOR_QUERY = `query($id: ID!) { product(id: $id) {
 } }`;
 
 import { completeTheLook3 } from "./boko-ctl3.js";
-const CTL_DEFAULT_ENGINE = 2; // BOKO CTL3: set to 3 to switch the live section + Klaviyo to the stylist engine
+const CTL_DEFAULT_ENGINE = 3; // BOKO CTL3: set to 3 to switch the live section + Klaviyo to the stylist engine
 export function mountCtl2(app, { verifyProxy, getToken, gql, db, loadProducts, recommend, complementaryPool }) {
   const TTL = 30 * 60 * 1000, OP_MAX = 20 * 60 * 1000;
   const mem = {}; // shop -> { at, products, byId }

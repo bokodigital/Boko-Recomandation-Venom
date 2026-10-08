@@ -212,28 +212,31 @@ function kindOf(p) {
   if (any(/\b(slipper|slippers|socks?|umbrella|keyring|key ring|jewellery case|jewelry case|face mask|scrunchies?|headband|hair clip|claw clips?|clips?|armbands?|brooch|pin|band)\b/) && !any(/\b(dress|top|pant|skirt)\b/)) return "x";
   if (any(/\b(pyjamas?|pajamas?|sleep|sleepwear|bralette|intimates?|lingerie|robe|lounge set)\b/)) return "x";
   // accessories (product type ACCESSORIES is shared) - but never when the title names a garment ("Ring Detail Tee")
-  const garment = any(/\b(dress|top|tee|t shirt|shirt|blouse|pants?|skirt|knit|jumper|cardigan|jacket|coat|blazer|jeans?|shorts|tank|singlet|sweater)\b/);
+  const garment = has(t, /\b(dress|dresses|top|tee|t shirt|shirt|blouse|pants?|skirt|knit|jumper|cardigan|jacket|coat|blazer|jeans?|shorts|tank|singlet|sweater)\b/);
+  const tAny = re => has(t, re);
   if (!garment) {
     if (any(/\b(bag|tote|clutch|handbag|crossbody|purse|hobo|satchel|backpack|bucket bag|camera bag|b ag)\b/) || c.includes("bags")) return "bag";
     if (any(/\b(necklace|earrings?|earring set|bracelet|bangle|cuff|ring|pendant|choker|anklet|stacker)\b/) || c.includes("jewelry")) return "jewellery";
     if (any(/\bbelts?\b|\bbet\b/) || c.includes("belts")) return "belt";
-    if (any(/\b(scarf|shawl|pashmina)\b/) || c.includes("scarves")) return "scarf";
+    if (tAny(/\b(scarf|shawl|pashmina|bandana)\b/) || c.includes("scarves")) return "scarf";
     if (any(/\b(sunglasses|sunnies)\b/) || c.includes("sunglasses")) return "sunglasses";
     if (any(/\b(hat|beanie|cap|beret)\b/) || c.includes("headwear")) return "hat";
     if (any(/\b(shoe|shoes|slides?|sandals?|sandle|wedge|heel|heels|boots?|loafer|sneaker|mule|flats)\b/) || c.includes("shoes")) return "shoes";
   }
   if (any(/\bset\b/) || /top and pant/.test(pt)) return "set";
   if (any(/\b(jumpsuit|playsuit|romper|overall)\b/) || c.includes("jumpsuits")) return "jumpsuit";
-  if (any(/\b(dress|sundress|kaftan|caftan|dres)\b/) && !any(/\bdress(y)? (pant|shirt|top)\b/)) return "dress";
+  if (any(/\b(dress|dresses|sundress|kaftan|caftan|dres)\b/) && !any(/\bdress(y)? (pant|shirt|top)\b/)) return "dress";
   if (any(/\b(blazer)\b/)) return "blazer";
   if (any(/\b(denim jacket|denim shacket|shacket|trucker)\b/) || (any(/\bjacket\b/) && any(/\bdenim\b/)) || c.includes("womens-denim-jackets")) return "denimjacket";
   if (any(/\b(coat|trench|puffer|parka|overcoat|faux fur)\b/)) return "coat";
+  if (tAny(/\b(windcheater|anorak|raincoat|spray jacket)\b/)) return "jacket";
   if (any(/\b(jacket|bomber|vest|gilet|cape)\b/) && !any(/\b(vest top|knit|knitted)\b/) && pt !== "knits" || pt === "coats jackets" || c.includes("coats-and-jackets") && !any(/\b(top|shirt|tee|knit|jumper)\b/)) return "jacket";
   if (any(/\b(cardigan|cardi)\b/) || c.includes("cardigans")) return "cardigan";
   if (any(/\b(skirt)\b/)) return "skirt";
   if (any(/\b(shorts)\b/)) return "shorts";
   if (any(/\b(jeans?|jean)\b/) || (pt === "denim" && !any(/\b(shirt|blouse|top|jacket|skirt|dress|short)/))) return "jeans";
   if (any(/\b(pants?|pant|trousers?|culottes?|leggings?|joggers?|capri|palazzo|flares?)\b/) || pt === "pants") return "pants";
+  if (tAny(/\b(tee|t shirt|tshirt|tank|singlet|cami|shirt|blouse|top)\b/) && !tAny(/\b(jumper|sweater|knit|knitted|pullover|turtleneck|cardigan|cardi)\b/)) return "top";
   if (any(/\b(jumper|sweater|knit|pullover|turtleneck|poncho|mohair)\b/) || pt === "knits" || c.includes("knits") && !any(/\b(shirt|tee|blouse|top)\b/)) return "knit";
   if (any(/\b(shirt|blouse|top|tee|t shirt|tshirt|tank|singlet|cami|bodysuit|bustier|sweatshirt|polo|crop|tunic)\b/) || /^(top|tops|shirts|t shirt|t shirts|tee|tshirt)$/.test(pt)) return "top";
   return "x";
@@ -245,7 +248,7 @@ const OUTERS = ["blazer", "coat", "jacket", "denimjacket"];
 /* ---------- season & occasion ---------- */
 function seasonOf(p, kind) {
   const t = norm(p.title);
-  if (/\b(wool|teddy|faux fur|fur|puffer|mohair|fluffy|fleece|sherpa|velvet|turtleneck|cable|felt|herringbone|corduroy|cord|quilted|chunky|boucle|cashmere|shearling)\b/.test(t)) return "winter";
+  if (/\b(wool|teddy|faux fur|fur|puffer|mohair|fluffy|fleece|sherpa|velvet|turtleneck|cable|felt|herringbone|corduroy|cord|quilted|chunky|thick|boucle|cashmere|shearling|thermal)\b/.test(t)) return "winter";
   if (kind === "coat") return /\btrench\b/.test(t) ? "all" : "winter";
   if (kind === "knit" && !/\b(tank|short sleeve|light|fine|viscose|vest|cami|ss2\d|summer|crochet|cotton)\b/.test(t)) return "winter";
   if (kind === "cardigan" && !/\b(lightweight|light|fine|cotton|bamboo)\b/.test(t)) return "winter";
@@ -257,7 +260,7 @@ function seasonOf(p, kind) {
 function occasionOf(p, kind) {
   const t = norm(p.title), c = p.cols || [];
   if (c.includes("formal-dresses") || c.includes("special-occassion-dresses") || /\b(sequin|sequins|cocktail|formal|gown|diamante|diamant|bustier|tulle|metallic|metalic|evening|party|silk)\b/.test(t)) return 2;
-  if (/\b(raffia|rafia|straw|canvas|beach|slides?|thongs|flip flops?)\b/.test(t)) return -1;
+  if (/\b(raffia|rafia|straw|canvas|beach|slides?|thongs|flip flops?|bear|lobster|novelty|cartoon|confetti|slogan|graphic|cherrybomb|fruit|fruits)\b/.test(t)) return -1;
   if (/\b(sweat|sweatshirt|sweatpants?|jogger|joggers|hoodie|hooded|track|trackpant|cargo|rugby|legging|leggings|sport|graphic|slogan)\b/.test(t)) return -1;
   if (/\b(satin|velvet|lace|blazer|tailored|suit|suiting|trench|pinstripe|pleated|classic pant|pencil|bias|silky|pussy bow|leather|pleather|faux leather|heel|heels|clutch)\b/.test(t) || kind === "blazer") return 1;
   return 0;
@@ -319,12 +322,16 @@ function optionsOf(p, kind) {
   return out;
 }
 
+// stable 0..1 number per (product, piece) pair: same answer every time for a product, different across products
+function mix(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 100000) / 100000; }
+
 /* ---------- engine ---------- */
 function completeTheLook3(catalog, anchor, opts = {}) {
   const total = Number.isFinite(opts.total) ? opts.total : 8;
   const now = opts.now || Date.now();
   const akind = kindOf(anchor);
-  const recipe = RECIPES[akind] || RECIPES.top;
+  const recipe = RECIPES[akind];
+  if (!recipe) return { items: [], meta: { engine: "ctl3", kind: akind, skipped: "not an outfit product" } };
   const acolorRaw = opts.acolor || anchor.color || "";
   let ad = toneOf(acolorRaw, anchor.cp, anchor.title, akind);
   if (!ad.known) ad = { tone: "print", print: "unknown", known: true }; // unknown product colour -> safest neutrals only
@@ -353,7 +360,7 @@ function completeTheLook3(catalog, anchor, opts = {}) {
     const s = seasonOf(p, k);
     if ((aSeason === "summer" && s === "winter") || (aSeason === "winter" && s === "summer")) { drop("season"); continue; }
     const o = occasionOf(p, k);
-    if ((aOcc === 2 && o === -1) || (aOcc === -1 && o === 2)) { drop("occasion"); continue; }
+    if (Math.abs(aOcc - o) >= 2 && !(aOcc === 2 && o === 0) && !(aOcc === 0 && o === 2)) { drop("occasion"); continue; }
     if (formal && (k === "denimjacket" || k === "hat" || k === "sunglasses" || (k === "jacket" && /\b(bomber|utility|puffer|vest|sport|hooded)\b/.test(norm(p.title))))) { drop("formal"); continue; }
     if (aOcc === -1 && (k === "blazer")) { drop("occasion"); continue; }
     const options = optionsOf(p, k);
@@ -399,7 +406,7 @@ function completeTheLook3(catalog, anchor, opts = {}) {
     for (const c of cands) {
       const b = bestOption(c, against);
       if (!b) continue;
-      out.push({ c, b, key: [offSeason(c.s) ? 0 : 1, b.f.sum, -Math.abs(c.o - aOcc), isBest(c.p) ? 1 : 0, isNew(c.p, now) ? 1 : 0, -(Math.abs((b.o.opt.price || c.p.price || 0) - (anchor.price || 0)))] });
+      out.push({ c, b, key: [offSeason(c.s) ? 0 : 1, b.f.sum, -Math.abs(c.o - aOcc), mix(String(anchor.id) + ":" + c.p.id)] });
     }
     out.sort((x, y) => { for (let i = 0; i < x.key.length; i++) if (x.key[i] !== y.key[i]) return y.key[i] - x.key[i]; return 0; });
     return out;
