@@ -71,7 +71,7 @@
           '<div class="boko-reco__imgwrap">' +
             '<span class="boko-reco__badge">' + TAB_META[type].badge + "</span>" +
             '<label class="boko-reco__bsel"><input type="checkbox" ' + (inB ? "checked" : "") + "> Bundle</label>" +
-            (p.img ? '<img loading="lazy" src="' + p.img + '" alt="">' : "") +
+            (p.img ? '<img loading="lazy" src="' + p.img + '" alt="' + String(p.title || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;") + ' | Venom Emilio">' : "") +
           "</div>" +
           '<div class="boko-reco__cbody">' +
             '<div class="boko-reco__vendor">' + (p.vendor || "") + "</div>" +
@@ -155,7 +155,7 @@
       var items = bundle.map(function (v) { return BUNDLE_ITEMS[v]; });
       var subtotal = items.reduce(function (s, p) { return s + Number(p.price); }, 0);
       var discount = (subtotal * cfg.bundleDiscount) / 100;
-      bar.querySelector("[data-bt]").innerHTML = items.slice(0, 6).map(function (p) { return p.img ? '<img src="' + p.img + '" alt="">' : ""; }).join("");
+      bar.querySelector("[data-bt]").innerHTML = items.slice(0, 6).map(function (p) { return p.img ? '<img src="' + p.img + '" alt="' + String(p.title || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;") + ' | Venom Emilio">' : ""; }).join("");
       bar.querySelector("[data-bc]").textContent = items.length + (items.length === 1 ? " item" : " items") + " in bundle";
       bar.querySelector("[data-bs]").innerHTML = cfg.bundleDiscount ? '<span class="boko-reco__save">Save ' + money(discount) + " (" + cfg.bundleDiscount + "%)</span>" : "";
       bar.querySelector("[data-bcomp]").textContent = cfg.bundleDiscount ? money(subtotal) : "";
