@@ -82,7 +82,7 @@
       slides.innerHTML="";
       items.forEach(function(p){
         var s=document.createElement("div"); s.className="bcc-slide";
-        s.innerHTML=(p.img?"<img class='bcc-img' src='"+p.img+"' alt=''>":"<div class='bcc-img'></div>")+
+        s.innerHTML=(p.img?"<img class='bcc-img' src='"+p.img+"' alt='"+String(p.title||"").replace(/&/g,"&amp;").replace(/'/g,"&#39;").replace(/</g,"&lt;")+" | Venom Emilio'>":"<div class='bcc-img'></div>")+
           "<div class='bcc-info'><div class='bcc-title'>"+p.title+"</div><div class='bcc-price'>"+money(p.price)+"</div><button class='bcc-add'>Add to cart</button></div>";
         s.querySelector(".bcc-add").addEventListener("click",function(){addToCart(p.variantId,this);});
         slides.appendChild(s);
